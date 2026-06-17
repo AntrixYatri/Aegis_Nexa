@@ -118,3 +118,9 @@ tmp/
 *.backup
 .env.production
 .env.staging
+
+# TypeScript build info cache
+*.tsbuildinfo
+
+# Vercel
+.vercel
