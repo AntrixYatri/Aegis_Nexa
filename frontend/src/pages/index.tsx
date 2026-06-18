@@ -81,12 +81,7 @@ export default function CommandCenter() {
     setLogs((prev) => [...prev, { timestamp: ts, message: msg, type }]);
   };
 
-  // Autoscroll terminal
-  useEffect(() => {
-    if (terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs]);
+
 
   // Live status indicators
   useEffect(() => {
@@ -136,6 +131,9 @@ export default function CommandCenter() {
       const simData = await response.json();
       setSimulationResult(simData);
       pushLog(`[SUCCESS] ST-GNN projection generated. Impacted nodes: ${simData.impacted_nodes.length}, Risk Radius: ${simData.blast_radius_meters}m`, 'success');
+      pushLog(`[SUCCESS] Risk topology mapped.`, 'success');
+      pushLog(`[SUCCESS] Impact radius visualized.`, 'success');
+      pushLog(`[INFO] Quarantine perimeter generated.`, 'info');
 
       // Request Dispatch orders
       pushLog(`[INFO] Sending payload to Gemini Intelligence Core...`, 'info');
@@ -191,6 +189,9 @@ export default function CommandCenter() {
       setDispatchData(mockDispatch);
       setDeploymentState('DISPATCHED');
       pushLog(`[SUCCESS] Local predictive simulation initialized successfully.`, 'success');
+      pushLog(`[SUCCESS] Risk topology mapped.`, 'success');
+      pushLog(`[SUCCESS] Impact radius visualized.`, 'success');
+      pushLog(`[INFO] Quarantine perimeter generated.`, 'info');
     } finally {
       setIsLlmLoading(false);
     }
@@ -230,6 +231,7 @@ export default function CommandCenter() {
     }
 
     pushLog(`[INFO] Preset incident activated: ${preset.name}`, 'info');
+    pushLog(`[INFO] Incident marker deployed.`, 'info');
     runSimulation(incidentData);
   };
 
@@ -243,6 +245,7 @@ export default function CommandCenter() {
     setExpandedIncidentId(customIncident.id || null);
     setActiveIncidentsList((prev) => [customIncident, ...prev]);
     pushLog(`[INFO] Custom incident created: ${customForm.event_type}`, 'info');
+    pushLog(`[INFO] Incident marker deployed.`, 'info');
     runSimulation(customIncident);
   };
 
@@ -283,12 +286,13 @@ export default function CommandCenter() {
   const getTimelineEvents = () => {
     const events: Array<{ time: string; label: string; active: boolean }> = [];
     if (activeIncident) {
-      events.push({ time: '00:01', label: 'Incident Created', active: phase >= 2 });
+      events.push({ time: '00:01', label: 'Incident Created', active: !!activeIncident });
       events.push({ time: '00:02', label: 'ST-GNN Triggered', active: phase >= 2 });
-      events.push({ time: '00:03', label: 'Prediction Generated', active: phase >= 2 });
-      events.push({ time: '00:04', label: 'Gemini Dispatch SOP Generated', active: phase >= 2 && !!dispatchData });
-      events.push({ time: '00:05', label: 'Intervention Deployed', active: phase >= 3 });
-      events.push({ time: '00:06', label: 'Congestion Reduced', active: phase >= 4 });
+      events.push({ time: '00:03', label: 'Prediction Generated', active: phase >= 2 && !!simulationResult });
+      events.push({ time: '00:04', label: 'Gemini SOP Generated', active: phase >= 2 && !!dispatchData });
+      events.push({ time: '00:05', label: 'Mitigation Deployed', active: phase >= 3 });
+      events.push({ time: '00:06', label: 'Fleet Rerouted', active: phase >= 4 });
+      events.push({ time: '00:07', label: 'Congestion Reduced', active: phase >= 4 });
     }
     return events;
   };
