@@ -1,9 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import EventSimulationRequest, EventSimulationResponse, DispatchOrderRequest
 from app.services.llm_service import IntelligenceService
+from app.services.graph_service import GraphEngine
+import datetime
 import random
 
 router = APIRouter()
+
+# Instantiate and warm up the cache engine on backend initialization
+# Downloads or loads the local Bengaluru 3km UTM-projected OSMnx graph slice
+graph_engine = GraphEngine()
 
 @router.post("/simulate-event", response_model=EventSimulationResponse)
 async def simulate_event(payload: EventSimulationRequest):
@@ -11,25 +17,30 @@ async def simulate_event(payload: EventSimulationRequest):
     if not (11.0 <= payload.latitude <= 15.0) or not (74.0 <= payload.longitude <= 79.0):
         raise HTTPException(status_code=400, detail="Coordinates outside system geographical boundaries.")
 
-    # Calculate dynamic mock parameters based on payload inputs
-    calculated_radius = float(payload.severity * 150) # Blast radius in meters
-    
-    # Mocking node IDs from the underlying OSMnx graph network
-    congested_nodes = [random.randint(100000, 999999) for _ in range(int(payload.severity))]
-    
-    # Structural mock coordinate tracking for frontend mapping canvas lines
-    mock_detours = [
-        [payload.longitude + 0.002, payload.latitude + 0.002],
-        [payload.longitude + 0.004, payload.latitude - 0.001],
-        [payload.longitude - 0.001, payload.latitude - 0.003]
-    ]
-
-    return {
-        "status": "success",
-        "blast_radius_meters": calculated_radius,
-        "impacted_nodes": congested_nodes,
-        "detour_geometry": mock_detours
-    }
+    try:
+        # Pass real-time dashboard inputs directly into the network-theory causal engine
+        simulation_results = graph_engine.calculate_hydraulic_diversion(
+            event_lat=payload.latitude,
+            event_lng=payload.longitude,
+            severity=payload.severity
+        )
+        
+        # Guardrail check against broken graph partitions
+        if not simulation_results["detour_geometry"]:
+            raise HTTPException(
+                status_code=500, 
+                detail="Graph partition failure: Local routing nodes unreachable."
+            )
+            
+        return {
+            "status": "success",
+            "blast_radius_meters": simulation_results["blast_radius_meters"],
+            "impacted_nodes": simulation_results["congested_nodes"],
+            "detour_geometry": simulation_results["detour_geometry"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Engine Block Core Fault: {str(e)}")
 
 @router.post("/dispatch-orders")
 async def get_dispatch_orders(payload: DispatchOrderRequest):
@@ -79,6 +90,3 @@ async def get_logistics_quarantine_zones(lat: float = 12.9716, lng: float = 77.5
             }
         ]
     }
-
-
-

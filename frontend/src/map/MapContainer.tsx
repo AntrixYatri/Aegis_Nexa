@@ -275,141 +275,159 @@ export default function MapContainer({
     }
 
     // Feature 4: ST-GNN Node Visualization (Blinking node indicators on affected intersections)
-    if (simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0) {
-      const radiusMeters = simulationResult.blast_radius_meters || 500;
-      const nodesData = simulationResult.impacted_nodes.map((nodeId: number) => {
-        const offset = getDeterministicOffset(nodeId, radiusMeters, lat);
-        return {
-          id: nodeId,
-          position: [lng + offset.dLng, lat + offset.dLat]
-        };
-      });
+    try {
+      if (simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0) {
+        const nodesData = simulationResult.impacted_nodes.map((node: any, idx: number) => {
+          // Robust mapping of coordinates from the backend data contract
+          const nodeLat = node.latitude;
+          const nodeLng = node.longitude;
+          const riskScore = node.risk_score || 50;
+          return {
+            id: idx,
+            position: [nodeLng, nodeLat],
+            riskScore: riskScore
+          };
+        }).filter((n: any) => !isNaN(n.position[0]) && !isNaN(n.position[1]));
 
-      layers.push(
-        new ScatterplotLayer({
-          id: 'st-gnn-impacted-nodes',
-          data: nodesData,
-          getPosition: (d: any) => d.position,
-          getRadius: 4.5,
-          radiusUnits: 'pixels',
-          // Blinks dynamically using pulseRadius sine wave
-          getFillColor: [245, 158, 11, Math.sin(pulseRadius * 0.25) > 0 ? 230 : 60], // Amber indicators
-          stroked: true,
-          getLineColor: [245, 158, 11, 255],
-          getLineWidth: 1,
-          pickable: false,
-        })
-      );
+        layers.push(
+          new ScatterplotLayer({
+            id: 'st-gnn-impacted-nodes',
+            data: nodesData,
+            getPosition: (d: any) => d.position,
+            // Scale size of Scatterplot markers according to risk_score metric
+            getRadius: (d: any) => 3 + (d.riskScore * 0.12),
+            radiusUnits: 'pixels',
+            // Scale color palette dynamically using risk_score (interpolate Amber -> Red)
+            getFillColor: (d: any) => {
+              const ratio = Math.min(1, Math.max(0, d.riskScore / 100));
+              const r = Math.round(245 + (255 - 245) * ratio);
+              const g = Math.round(158 + (59 - 158) * ratio);
+              const b = Math.round(11 + (59 - 11) * ratio);
+              const alpha = Math.sin(pulseRadius * 0.25) > 0 ? 230 : 60;
+              return [r, g, b, alpha];
+            },
+            stroked: true,
+            getLineColor: (d: any) => {
+              const ratio = Math.min(1, Math.max(0, d.riskScore / 100));
+              const r = Math.round(245 + (255 - 245) * ratio);
+              const g = Math.round(158 + (59 - 158) * ratio);
+              const b = Math.round(11 + (59 - 11) * ratio);
+              return [r, g, b, 255];
+            },
+            getLineWidth: 1,
+            pickable: true,
+          })
+        );
+      }
+    } catch (err: any) {
+      console.warn("Cordon zone impacted nodes mapping failed:", err);
+      if (onLogMessage) {
+        onLogMessage(`[WARN] Cordon node visualization mismatch: ${err.message}`, 'warn');
+      }
     }
 
-    // Feature 1: Dynamic Diversion Corridors (Red, Green, Cyan roads)
-    const affectedPath = [
-      [lng - 0.005, lat - 0.003],
-      [lng - 0.002, lat - 0.001],
-      [lng, lat]
-    ] as [number, number][];
+    // Feature 1: Dynamic Diversion Corridors (Alternative paths loop with BPR flow allocation)
+    try {
+      if (simulationPhase >= 3 && simulationResult && simulationResult.detour_geometry && simulationResult.detour_geometry.length > 0) {
+        simulationResult.detour_geometry.forEach((route: any, idx: number) => {
+          const flow = route.flow_allocation_percentage || 30;
+          const coords = route.coordinates;
+          
+          if (!coords || coords.length < 2) return;
 
-    const diversionPath = [
-      [lng - 0.005, lat - 0.003],
-      [lng - 0.004, lat + 0.002],
-      [lng, lat + 0.004],
-      [lng + 0.004, lat + 0.002],
-      [lng + 0.005, lat]
-    ] as [number, number][];
+          // Adjust line width/stroke based on flow_allocation_percentage metric
+          const pathWidth = 2.5 + (flow * 0.08);
 
-    const optimizedPath = [
-      [lng - 0.005, lat - 0.003],
-      [lng - 0.002, lat - 0.004],
-      [lng + 0.003, lat - 0.003],
-      [lng + 0.005, lat]
-    ] as [number, number][];
+          // Assign distinct dynamic colors based on route hierarchy and flow allocations
+          let strokeColor = [0, 229, 255, 220]; // Default prediction cyan
+          if (route.route_index === 1) {
+            strokeColor = [16, 185, 129, 200]; // Emerald green diversion corridor
+          } else if (route.route_index === 2) {
+            strokeColor = [245, 158, 11, 180]; // Amber mitigation route
+          }
 
-    if (simulationPhase >= 3) {
-      // 1. Affected Road (RED)
-      layers.push(
-        new PathLayer({
-          id: 'affected-corridor',
-          data: [{ path: affectedPath }],
-          getPath: (d: any) => d.path,
-          getColor: [255, 59, 59, 200], // semantic danger color
-          getWidth: 4,
-          widthMinPixels: 2.5,
-          pickable: false,
-        })
-      );
+          // Renders routing path segments on MapLibre vector canvas
+          layers.push(
+            new PathLayer({
+              id: `detour-path-${route.route_index}-${idx}`,
+              data: [route],
+              getPath: (d: any) => d.coordinates,
+              getColor: strokeColor,
+              getWidth: pathWidth,
+              widthMinPixels: 2.5,
+              pickable: true,
+            })
+          );
 
-      // 2. Rerouting Diversion (GREEN)
-      layers.push(
-        new PathLayer({
-          id: 'diversion-corridor',
-          data: [{ path: diversionPath }],
-          getPath: (d: any) => d.path,
-          getColor: [16, 185, 129, 200], // semantic green route color
-          getWidth: 4,
-          widthMinPixels: 2.5,
-          pickable: false,
-        })
-      );
+          // Render moving vehicle/telemetry animation markers matching BPR splits
+          const numVehicles = Math.max(1, Math.floor(flow / 10)); // e.g. 50% flow split generates 5 cars
+          const vehicles = Array.from({ length: numVehicles }).map((_, vIdx) => {
+            const t = ((pulseRadius + vIdx * (100 / numVehicles)) % 100) / 100;
+            return {
+              position: getPointOnPath(coords, t)
+            };
+          });
 
-      // 3. Optimized Corridor (CYAN)
-      layers.push(
-        new PathLayer({
-          id: 'optimized-corridor',
-          data: [{ path: optimizedPath }],
-          getPath: (d: any) => d.path,
-          getColor: [0, 229, 255, 200], // semantic cyan prediction color
-          getWidth: 4,
-          widthMinPixels: 2.5,
-          pickable: false,
-        })
-      );
+          layers.push(
+            new ScatterplotLayer({
+              id: `fleet-vehicles-route-${route.route_index}-${idx}`,
+              data: vehicles,
+              getPosition: (d: any) => d.position,
+              getRadius: 5,
+              radiusUnits: 'pixels',
+              getFillColor: strokeColor,
+              stroked: true,
+              getLineColor: [0, 0, 0, 255],
+              getLineWidth: 1.5,
+              pickable: false,
+            })
+          );
+        });
+      } else if (simulationPhase >= 3) {
+        // Safe static path fallbacks if dynamic OSMnx routing dataset fails or is pending
+        const affectedPath = [
+          [lng - 0.005, lat - 0.003],
+          [lng - 0.002, lat - 0.001],
+          [lng, lat]
+        ] as [number, number][];
 
-      // Feature 2: Fleet Response Animation (Moving cargo van indicators)
-      // Render 4 vehicle markers along the Green diversion path
-      const greenVehicles = Array.from({ length: 4 }).map((_, i) => {
-        const t = ((pulseRadius + i * 25) % 100) / 100;
-        return {
-          position: getPointOnPath(diversionPath, t)
-        };
-      });
+        const diversionPath = [
+          [lng - 0.005, lat - 0.003],
+          [lng - 0.004, lat + 0.002],
+          [lng, lat + 0.004],
+          [lng + 0.004, lat + 0.002],
+          [lng + 0.005, lat]
+        ] as [number, number][];
 
-      layers.push(
-        new ScatterplotLayer({
-          id: 'green-fleet-vehicles',
-          data: greenVehicles,
-          getPosition: (d: any) => d.position,
-          getRadius: 5,
-          radiusUnits: 'pixels',
-          getFillColor: [16, 185, 129, 255], // Green fleet van
-          stroked: true,
-          getLineColor: [0, 0, 0, 255],
-          getLineWidth: 1.5,
-          pickable: false,
-        })
-      );
+        layers.push(
+          new PathLayer({
+            id: 'affected-corridor-fallback',
+            data: [{ path: affectedPath }],
+            getPath: (d: any) => d.path,
+            getColor: [255, 59, 59, 200],
+            getWidth: 4,
+            widthMinPixels: 2.5,
+            pickable: false,
+          })
+        );
 
-      // Render 4 vehicle markers along the Cyan optimized path
-      const cyanVehicles = Array.from({ length: 4 }).map((_, i) => {
-        const t = ((pulseRadius + i * 25) % 100) / 100;
-        return {
-          position: getPointOnPath(optimizedPath, t)
-        };
-      });
-
-      layers.push(
-        new ScatterplotLayer({
-          id: 'cyan-fleet-vehicles',
-          data: cyanVehicles,
-          getPosition: (d: any) => d.position,
-          getRadius: 5,
-          radiusUnits: 'pixels',
-          getFillColor: [0, 229, 255, 255], // Cyan fleet van
-          stroked: true,
-          getLineColor: [0, 0, 0, 255],
-          getLineWidth: 1.5,
-          pickable: false,
-        })
-      );
+        layers.push(
+          new PathLayer({
+            id: 'diversion-corridor-fallback',
+            data: [{ path: diversionPath }],
+            getPath: (d: any) => d.path,
+            getColor: [16, 185, 129, 200],
+            getWidth: 4,
+            widthMinPixels: 2.5,
+            pickable: false,
+          })
+        );
+      }
+    } catch (err: any) {
+      console.warn("Alternative routing paths mapping failed:", err);
+      if (onLogMessage) {
+        onLogMessage(`[WARN] Detour paths compilation error: ${err.message}`, 'warn');
+      }
     }
   }
 

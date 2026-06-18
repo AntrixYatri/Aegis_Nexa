@@ -164,11 +164,49 @@ export default function CommandCenter() {
 
       // Calculate mock fallback parameters locally to ensure 100% frontend operational capability
       const mockRadius = incident.severity * 150;
-      const mockNodes = Array.from({ length: incident.severity }).map((_, i) => 100000 + i * 23);
-      const mockDetours: [number, number][] = [
-        [incident.longitude + 0.002, incident.latitude + 0.002],
-        [incident.longitude + 0.004, incident.latitude - 0.001],
-        [incident.longitude - 0.001, incident.latitude - 0.003]
+      
+      // Generate structured mock nodes with latitude, longitude, and risk_score
+      const mockNodes = Array.from({ length: incident.severity }).map((_, i) => {
+        const angle = (i * 2 * Math.PI) / incident.severity;
+        const offsetLng = (mockRadius * 0.00001) * Math.cos(angle);
+        const offsetLat = (mockRadius * 0.00001) * Math.sin(angle);
+        return {
+          latitude: incident.latitude + offsetLat,
+          longitude: incident.longitude + offsetLng,
+          risk_score: Math.min(100, Math.max(10, 100 - i * 10))
+        };
+      });
+
+      // Generate structured detour paths matching the BPR routing outputs
+      const mockDetours = [
+        {
+          route_index: 0,
+          flow_allocation_percentage: 50,
+          coordinates: [
+            [incident.longitude, incident.latitude],
+            [incident.longitude + 0.002, incident.latitude + 0.002],
+            [incident.longitude + 0.005, incident.latitude + 0.003]
+          ]
+        },
+        {
+          route_index: 1,
+          flow_allocation_percentage: 30,
+          coordinates: [
+            [incident.longitude, incident.latitude],
+            [incident.longitude - 0.002, incident.latitude + 0.003],
+            [incident.longitude - 0.004, incident.latitude + 0.002],
+            [incident.longitude - 0.005, incident.latitude + 0.004]
+          ]
+        },
+        {
+          route_index: 2,
+          flow_allocation_percentage: 20,
+          coordinates: [
+            [incident.longitude, incident.latitude],
+            [incident.longitude + 0.002, incident.latitude - 0.002],
+            [incident.longitude + 0.004, incident.latitude - 0.004]
+          ]
+        }
       ];
 
       setSimulationResult({
