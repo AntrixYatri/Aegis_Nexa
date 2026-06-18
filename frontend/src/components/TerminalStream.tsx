@@ -72,8 +72,8 @@ export const TerminalStream: React.FC<TerminalStreamProps> = ({
   };
 
   return (
-    <div className="w-full bg-black border-t border-slate-800 flex flex-col h-40 font-mono text-[10px] select-text select-none shrink-0 overflow-hidden relative">
-      
+    <div className="w-full bg-black border-t border-slate-800 flex flex-col h-40 font-mono text-[10px] select-text select-none shrink-0 relative">
+
       {/* Terminal Header */}
       <div className="flex justify-between items-center border-b border-slate-900 bg-slate-950 px-4 py-1 flex-none h-6">
         <span className="text-slate-500 uppercase tracking-widest text-[8px] font-bold">

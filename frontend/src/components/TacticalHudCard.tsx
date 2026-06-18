@@ -43,18 +43,18 @@ export const TacticalHudCard: React.FC<TacticalHudCardProps> = ({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className={`relative border border-slate-800 bg-bg-tactical bg-tactical-grid flex flex-col p-4 rounded-none overflow-hidden ${className}`}
+      className={`relative border border-slate-800 bg-bg-tactical bg-tactical-grid flex flex-col p-4 rounded-none ${className}`}
     >
       {/* Absolute Corner Accents */}
       <div className="absolute top-0 left-0 w-2 h-[1px] bg-slate-600" />
       <div className="absolute top-0 left-0 w-[1px] h-2 bg-slate-600" />
-      
+
       <div className="absolute top-0 right-0 w-2 h-[1px] bg-slate-600" />
       <div className="absolute top-0 right-0 w-[1px] h-2 bg-slate-600" />
-      
+
       <div className="absolute bottom-0 left-0 w-2 h-[1px] bg-slate-600" />
       <div className="absolute bottom-0 left-0 w-[1px] h-2 bg-slate-600" />
-      
+
       <div className="absolute bottom-0 right-0 w-2 h-[1px] bg-slate-600" />
       <div className="absolute bottom-0 right-0 w-[1px] h-2 bg-slate-600" />
 
