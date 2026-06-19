@@ -186,6 +186,15 @@ class GraphEngine:
 
         detour_geometry = []
         congested_nodes_output = []
+        for node in blocked_nodes:
+            if node in self.G_unprojected:
+                node_data = self.G_unprojected.nodes[node]
+                congested_nodes_output.append({
+                    "latitude": node_data['y'],
+                    "longitude": node_data['x'],
+                    "risk_score": 100
+                })
+
         
         # Split traffic distribution across alternative corridors (e.g., 50%, 30%, 20%)
         flow_splits = [0.5, 0.3, 0.2]
@@ -217,8 +226,10 @@ class GraphEngine:
                 "coordinates": path_coords
             })
 
+        clamped_output = congested_nodes_output[:20]
+        print(f"[Aegis Graph] Final impacted nodes count: {len(clamped_output)}")
         return {
             "blast_radius_meters": blast_radius,
-            "congested_nodes": congested_nodes_output[:20],  # Clamp payload limit
+            "congested_nodes": clamped_output,
             "detour_geometry": detour_geometry
         }

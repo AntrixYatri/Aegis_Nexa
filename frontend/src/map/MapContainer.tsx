@@ -335,13 +335,43 @@ export default function MapContainer({
       }
     }
 
+    // New ST-GNN impacted nodes overlay layer (minimal, driven by simulationResult.impacted_nodes)
+    try {
+      if (simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0) {
+        layers.push(
+          new ScatterplotLayer({
+            id: 'st-gnn-impacted-nodes-overlay',
+            data: simulationResult.impacted_nodes,
+            getPosition: (d: any) => [d.longitude, d.latitude],
+            getRadius: (d: any) => d.risk_score || 0,
+            radiusScale: 0.35, // scale factor to size appropriately
+            radiusUnits: 'pixels',
+            radiusMinPixels: 4,
+            radiusMaxPixels: 8,
+            getFillColor: [255, 69, 0, 220], // glowing red/orange (OrangeRed)
+            getLineColor: [255, 140, 0, 255], // bright orange outline
+            stroked: true,
+            filled: true,
+            getLineWidth: 1,
+            lineWidthMinPixels: 1,
+            pickable: true,
+          })
+        );
+      }
+    } catch (err: any) {
+      console.warn("ST-GNN node overlay layer failed to load:", err);
+      if (onLogMessage) {
+        onLogMessage(`[WARN] ST-GNN node overlay error: ${err.message}`, 'warn');
+      }
+    }
+
     // Feature 1: Dynamic Diversion Corridors (Alternative paths loop with BPR flow allocation)
     try {
       if (simulationPhase >= 3 && simulationResult && simulationResult.detour_geometry && simulationResult.detour_geometry.length > 0) {
         simulationResult.detour_geometry.forEach((route: any, idx: number) => {
           const flow = route.flow_allocation_percentage || 30;
           const coords = route.coordinates;
-          
+
           if (!coords || coords.length < 2) return;
 
           // Adjust line width/stroke based on flow_allocation_percentage metric
