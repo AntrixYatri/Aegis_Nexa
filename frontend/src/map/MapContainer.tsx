@@ -17,6 +17,8 @@ interface MapContainerProps {
   ) => void;
   showHistoricalRisk?: boolean;
   historicalRiskData?: any[];
+  timelineStage: number;
+  networkMode: 'current' | 'mitigated';
 }
 
 // Utility to generate a circle polygon array of coordinates
@@ -168,7 +170,9 @@ export default function MapContainer({
   simulationResult,
   onLogMessage,
   showHistoricalRisk,
-  historicalRiskData
+  historicalRiskData,
+  timelineStage,
+  networkMode
 }: MapContainerProps) {
   const [viewState, setViewState] = useState({
     longitude: 77.5946,
@@ -177,25 +181,6 @@ export default function MapContainer({
     pitch: 45,
     bearing: -15
   });
-
-  // Timeline causal propagation stage (T+0 to T+6 stages)
-  const [timelineStage, setTimelineStage] = useState(0);
-
-  useEffect(() => {
-    if (activeIncident && activeIncident.id) {
-      setTimelineStage(0);
-      const interval = setInterval(() => {
-        setTimelineStage((prev) => {
-          if (prev < 6) return prev + 1;
-          clearInterval(interval);
-          return prev;
-        });
-      }, 700); // 700ms step updates
-      return () => clearInterval(interval);
-    } else {
-      setTimelineStage(0);
-    }
-  }, [activeIncident?.id]);
 
   // Pulse animation loop
   const [pulseRadius, setPulseRadius] = useState(0);
@@ -282,30 +267,48 @@ export default function MapContainer({
 
     // Severity Node Hierarchy style helper
     const getSeverityStyle = (riskScore: number, pulseRad: number) => {
-      if (riskScore >= 85) { // Critical
-        return {
-          color: [255, 30, 30], // Red
-          radius: 7.0,
-          pulse: 1.5 + Math.sin(pulseRad * 0.3) * 0.4
-        };
-      } else if (riskScore >= 60) { // High
-        return {
-          color: [255, 120, 0], // Orange
-          radius: 5.5,
-          pulse: 1.2 + Math.sin(pulseRad * 0.2) * 0.2
-        };
-      } else if (riskScore >= 35) { // Moderate
-        return {
-          color: [255, 210, 0], // Yellow
-          radius: 4.0,
-          pulse: 1.0
-        };
-      } else { // Low
-        return {
-          color: [0, 229, 255], // Cyan
-          radius: 3.0,
-          pulse: 1.0
-        };
+      if (networkMode === 'mitigated') {
+        // Mitigated: soft cyan/yellow colors with lower opacity/radii
+        if (riskScore >= 60) {
+          return {
+            color: [230, 240, 100], // Soft yellow/cyan mix
+            radius: 3.5,
+            pulse: 1.0
+          };
+        } else {
+          return {
+            color: [0, 200, 220], // Soft cyan
+            radius: 2.5,
+            pulse: 1.0
+          };
+        }
+      } else {
+        // Current unmitigated network
+        if (riskScore >= 85) { // Critical
+          return {
+            color: [255, 30, 30], // Red
+            radius: 7.0,
+            pulse: 1.5 + Math.sin(pulseRad * 0.3) * 0.4
+          };
+        } else if (riskScore >= 60) { // High
+          return {
+            color: [255, 120, 0], // Orange
+            radius: 5.5,
+            pulse: 1.2 + Math.sin(pulseRad * 0.2) * 0.2
+          };
+        } else if (riskScore >= 35) { // Moderate
+          return {
+            color: [255, 210, 0], // Yellow
+            radius: 4.0,
+            pulse: 1.0
+          };
+        } else { // Low
+          return {
+            color: [0, 229, 255], // Cyan
+            radius: 3.0,
+            pulse: 1.0
+          };
+        }
       }
     };
 
@@ -449,7 +452,10 @@ export default function MapContainer({
             radiusMaxPixels: 15,
             getFillColor: (d: any) => {
               const style = getSeverityStyle(d.riskScore, pulseRadius);
-              const alpha = d.riskScore >= 85 ? (Math.sin(pulseRadius * 0.3) > 0 ? 245 : 90) : 200;
+              const baseAlpha = networkMode === 'mitigated' ? 70 : 200;
+              const alpha = d.riskScore >= 85 && networkMode === 'current'
+                ? (Math.sin(pulseRadius * 0.3) > 0 ? 245 : 90)
+                : baseAlpha;
               return style.color.concat([alpha]);
             },
             stroked: true,
@@ -461,7 +467,7 @@ export default function MapContainer({
             pickable: true,
           })
         );
-
+ 
         // ST-GNN Node secondary halo overlay
         layers.push(
           new ScatterplotLayer({
@@ -477,7 +483,8 @@ export default function MapContainer({
             radiusMaxPixels: 28,
             getFillColor: (d: any) => {
               const style = getSeverityStyle(d.risk_score || 50, pulseRadius);
-              const alpha = Math.round(40 + Math.sin(pulseRadius * 0.2) * 20);
+              const baseAlpha = networkMode === 'mitigated' ? 15 : 40;
+              const alpha = Math.round(baseAlpha + Math.sin(pulseRadius * 0.2) * 10);
               return style.color.concat([alpha]);
             },
             stroked: false,
@@ -495,7 +502,7 @@ export default function MapContainer({
 
     // Feature 1: Dynamic Diversion Corridors (Alternative paths loop with BPR flow allocation)
     try {
-      if (simulationPhase >= 3 && simulationResult && simulationResult.detour_geometry && simulationResult.detour_geometry.length > 0 && timelineStage >= 5) {
+      if (networkMode === 'mitigated' && simulationPhase >= 3 && simulationResult && simulationResult.detour_geometry && simulationResult.detour_geometry.length > 0 && timelineStage >= 5) {
         simulationResult.detour_geometry.forEach((route: any, idx: number) => {
           const flow = route.flow_allocation_percentage || 30;
           const coords = route.coordinates;
@@ -600,7 +607,7 @@ export default function MapContainer({
             );
           }
         });
-      } else if (simulationPhase >= 3) {
+      } else if (networkMode === 'mitigated' && simulationPhase >= 3) {
         // Safe static path fallbacks if dynamic OSMnx routing dataset fails or is pending
         const affectedPath = [
           [lng - 0.005, lat - 0.003],

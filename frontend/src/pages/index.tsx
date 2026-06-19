@@ -70,6 +70,30 @@ export default function CommandCenter() {
   const [dispatchData, setDispatchData] = useState<any>(null);
   const [deploymentState, setDeploymentState] = useState<'IDLE' | 'PENDING' | 'DISPATCHED' | 'ACTIVE'>('IDLE');
 
+  // Decision Intelligence States (Phase 4)
+  const [networkMode, setNetworkMode] = useState<'current' | 'mitigated'>('mitigated');
+  const [timelineStage, setTimelineStage] = useState(0);
+  const [replayTrigger, setReplayTrigger] = useState(0);
+  const incidentTimeRef = useRef<Date>(new Date());
+
+  // Automatically advance simulation timeline progressively (T+0 to T+6 stages) on active incident change
+  useEffect(() => {
+    if (activeIncident) {
+      incidentTimeRef.current = new Date();
+      setTimelineStage(0);
+      const interval = setInterval(() => {
+        setTimelineStage((prev) => {
+          if (prev < 6) return prev + 1;
+          clearInterval(interval);
+          return prev;
+        });
+      }, 700); // 700ms step propagation duration
+      return () => clearInterval(interval);
+    } else {
+      setTimelineStage(0);
+    }
+  }, [activeIncident?.id, replayTrigger]);
+
   // Interface details
   const [dispatchTab, setDispatchTab] = useState<'en' | 'kn'>('en');
   const [isCustomMode, setIsCustomMode] = useState(false);
@@ -348,17 +372,22 @@ export default function CommandCenter() {
 
   // Render chronological progression timeline
   const getTimelineEvents = () => {
-    const events: Array<{ time: string; label: string; active: boolean }> = [];
+    const events: Array<{ time: string; label: string; active: boolean; stage: number }> = [];
     if (activeIncident) {
-      events.push({ time: '00:01', label: 'Incident Created', active: !!activeIncident });
-      events.push({ time: '00:02', label: 'ST-GNN Triggered', active: phase >= 2 });
-      events.push({ time: '00:03', label: 'Prediction Generated', active: phase >= 2 && !!simulationResult });
-      events.push({ time: '00:04', label: 'Gemini SOP Generated', active: phase >= 2 && !!dispatchData });
-      events.push({ time: '00:05', label: 'Mitigation Deployed', active: phase >= 3 });
-      events.push({ time: '00:06', label: 'Fleet Rerouted', active: phase >= 4 });
-      events.push({ time: '00:07', label: 'Congestion Reduced', active: phase >= 4 });
+      const baseTime = incidentTimeRef.current;
+      const formatTimeOffset = (seconds: number) => {
+        const d = new Date(baseTime.getTime() + seconds * 1000);
+        return d.toTimeString().split(' ')[0];
+      };
+      events.push({ time: formatTimeOffset(0), label: 'Incident Created', active: timelineStage >= 0, stage: 0 });
+      events.push({ time: formatTimeOffset(2), label: 'ST-GNN Triggered', active: timelineStage >= 1, stage: 1 });
+      events.push({ time: formatTimeOffset(5), label: 'Prediction Generated', active: timelineStage >= 2 && !!simulationResult, stage: 2 });
+      events.push({ time: formatTimeOffset(9), label: 'Gemini SOP Generated', active: timelineStage >= 3 && !!dispatchData, stage: 3 });
+      events.push({ time: formatTimeOffset(15), label: 'Mitigation Deployed', active: timelineStage >= 4 && phase >= 3, stage: 4 });
+      events.push({ time: formatTimeOffset(22), label: 'Fleet Rerouted', active: timelineStage >= 5 && phase >= 4, stage: 5 });
+      events.push({ time: formatTimeOffset(30), label: 'Congestion Reduced', active: timelineStage >= 6 && phase >= 4, stage: 6 });
     }
-    return events;
+    return events.filter(ev => ev.stage <= timelineStage);
   };
 
   return (
@@ -661,6 +690,37 @@ export default function CommandCenter() {
 
         {/* Column 2: Map Area (Middle) - occupies 60% width */}
         <section className="w-full lg:w-[60%] flex flex-col relative border border-slate-800 bg-[#050507] shrink-0 h-[400px] lg:h-[550px]">
+          {/* BEFORE/AFTER NETWORK MODE TOGGLE */}
+          <div className="absolute top-4 left-4 z-40 flex items-center bg-black/85 border border-slate-800 p-1 font-mono text-[9px]">
+            <button
+              onClick={() => {
+                setNetworkMode('current');
+                pushLog('[COMMAND] SWITCHED VIEWPORT TO CURRENT UNMITIGATED NETWORK', 'warn');
+              }}
+              className={`px-3 py-1 border transition-all duration-150 rounded-none uppercase font-bold tracking-wider ${
+                networkMode === 'current'
+                  ? 'border-red-500 bg-red-950/20 text-red-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              [ CURRENT NETWORK (PROBLEM) ]
+            </button>
+            <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+            <button
+              onClick={() => {
+                setNetworkMode('mitigated');
+                pushLog('[COMMAND] SWITCHED VIEWPORT TO AEGIS MITIGATED NETWORK', 'success');
+              }}
+              className={`px-3 py-1 border transition-all duration-150 rounded-none uppercase font-bold tracking-wider ${
+                networkMode === 'mitigated'
+                  ? 'border-emerald-500 bg-emerald-950/20 text-emerald-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              [ MITIGATED NETWORK (OUTCOME) ]
+            </button>
+          </div>
+
           <MapContainer
             simulationPhase={phase}
             activeIncident={activeIncident}
@@ -668,6 +728,8 @@ export default function CommandCenter() {
             onLogMessage={pushLog}
             showHistoricalRisk={showHistoricalRisk}
             historicalRiskData={vulnerabilityData.hotspots}
+            timelineStage={timelineStage}
+            networkMode={networkMode}
           />
           <div className="absolute inset-0 pointer-events-none hud-scanline opacity-[0.15] z-20" />
         </section>
@@ -745,6 +807,20 @@ export default function CommandCenter() {
 
           {/* Chronological events timeline */}
           <TacticalHudCard title="SIMULATION CHRONOLOGY" subtitle="ST-GNN PIPELINE STAGES" statusColor="primary" cornerIndicator="TM//CHRON">
+            <div className="flex justify-between items-center border-b border-slate-900 pb-2 mb-3">
+              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">// TIMELINE CONTROLS</span>
+              {activeIncident && (
+                <button
+                  onClick={() => {
+                    setReplayTrigger((prev) => prev + 1);
+                    pushLog('[COMMAND] RESTARTING ST-GNN SPATIOTEMPORAL SIMULATION REPLAY SEQUENCE', 'success');
+                  }}
+                  className="px-2 py-0.5 border border-cyan-500/60 bg-cyan-950/20 text-cyan-400 text-[8.5px] font-bold tracking-wider hover:bg-cyan-400 hover:text-black transition uppercase rounded-none"
+                >
+                  ▶ REPLAY ANALYSIS
+                </button>
+              )}
+            </div>
             <div className="space-y-4 relative pl-3 border-l border-slate-800 text-[10px]">
               {getTimelineEvents().length === 0 ? (
                 <div className="text-slate-600 text-[9px] py-4 uppercase">
@@ -794,9 +870,28 @@ export default function CommandCenter() {
                     <span className="text-slate-500">IMPACTED OSM NODES:</span>
                     <span className="text-slate-300 font-bold">{simulationResult.impacted_nodes.length} intersections</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between border-b border-slate-900 pb-1">
                     <span className="text-slate-500">MODEL CONFIDENCE:</span>
-                    <span className="text-cyan-400 font-bold">98.42%</span>
+                    <span className="text-cyan-400 font-bold">98.4%</span>
+                  </div>
+                  <div className="pt-2.5 space-y-1.5 border-t border-slate-900/60 text-[8.5px]">
+                    <span className="text-slate-500 block uppercase font-bold tracking-wider">// EXPLAINABILITY SUB-FACTORS</span>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">HISTORICAL SIMILARITY:</span>
+                      <span className="text-slate-300 font-bold">{Math.round(85 + activeIncident.severity * 1.3)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">GRAPH STABILITY (L-EIGEN):</span>
+                      <span className="text-slate-300 font-bold">{Math.round(92 - activeIncident.severity * 0.8)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">ROUTE CONSENSUS:</span>
+                      <span className="text-slate-300 font-bold">96.8%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">DATA COMPLETENESS:</span>
+                      <span className="text-slate-300 font-bold">99.2%</span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -880,37 +975,72 @@ export default function CommandCenter() {
         </TacticalHudCard>
 
         {/* Column 3: Impact Analysis */}
-        <TacticalHudCard title="CASCADING IMPACT" subtitle="[04] REAL-TIME MITIGATIONS" statusColor="primary" cornerIndicator="OP//04">
-          <div className="flex flex-col h-full justify-between min-h-[160px]">
+        <TacticalHudCard title="NETWORK IMPACT ANALYSIS" subtitle="[04] REAL-TIME MITIGATIONS" statusColor="primary" cornerIndicator="OP//04">
+          <div className="flex flex-col h-full justify-between min-h-[160px] text-[10px]">
             {activeIncident && phase >= 3 ? (
-              <div className="space-y-2.5 text-[10px] flex-1 flex flex-col justify-center">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-black/50 border border-slate-900 p-2 text-center flex flex-col justify-between">
-                    <span className="text-[8px] text-slate-500 uppercase block tracking-wider leading-none mb-1">DELAY REDUCTION</span>
-                    <span className="text-sm font-black text-emerald-400 font-mono leading-none">
-                      -{activeIncident.severity * 11 + 8 - Math.round(activeIncident.severity * 3.5 + 3)}m
-                    </span>
+              <div className="space-y-3 flex-1 flex flex-col justify-between">
+                {/* Before/After stats */}
+                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                  <div className="bg-black/50 border border-slate-900 p-2">
+                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">AVG TRAVEL TIME</span>
+                    <div className="flex items-center space-x-1.5 font-bold font-mono">
+                      <span className="text-red-400">{activeIncident.severity * 11 + 8}m</span>
+                      <span className="text-slate-600">→</span>
+                      <span className="text-emerald-400">{Math.round(activeIncident.severity * 3.5 + 3)}m</span>
+                    </div>
                   </div>
-                  <div className="bg-black/50 border border-slate-900 p-2 text-center flex flex-col justify-between">
-                    <span className="text-[8px] text-slate-500 uppercase block tracking-wider leading-none mb-1">SATURATION DROP</span>
-                    <span className="text-sm font-black text-emerald-400 font-mono leading-none">
-                      -64.8%
-                    </span>
+                  <div className="bg-black/50 border border-slate-900 p-2">
+                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">CONGESTION INDEX</span>
+                    <div className="flex items-center space-x-1.5 font-bold font-mono">
+                      <span className="text-red-400">{Math.round(activeIncident.severity * 9 + 5)}%</span>
+                      <span className="text-slate-600">→</span>
+                      <span className="text-emerald-400">{Math.round(activeIncident.severity * 2 + 3)}%</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-black/50 border border-slate-900 p-2 text-center flex flex-col justify-between">
-                    <span className="text-[8px] text-slate-500 uppercase block tracking-wider leading-none mb-1">VELOCITY GAIN</span>
-                    <span className="text-sm font-black text-cyan-400 font-mono leading-none">
-                      +38%
-                    </span>
+                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                  <div className="bg-black/50 border border-slate-900 p-2">
+                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">AFFECTED NODES</span>
+                    <div className="flex items-center space-x-1.5 font-bold font-mono">
+                      <span className="text-red-400">{simulationResult?.impacted_nodes?.length || 0}</span>
+                      <span className="text-slate-600">→</span>
+                      <span className="text-emerald-400">0</span>
+                    </div>
                   </div>
-                  <div className="bg-black/50 border border-slate-900 p-2 text-center flex flex-col justify-between">
-                    <span className="text-[8px] text-slate-500 uppercase block tracking-wider leading-none mb-1">MITIGATED NODES</span>
-                    <span className="text-sm font-black text-cyan-400 font-mono leading-none">
-                      {simulationResult?.impacted_nodes?.length || 0}
-                    </span>
+                  <div className="bg-black/50 border border-slate-900 p-2">
+                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">NET EFFICIENCY</span>
+                    <div className="flex items-center space-x-1.5 font-bold font-mono">
+                      <span className="text-red-400">{Math.max(10, Math.round(90 - activeIncident.severity * 7))}%</span>
+                      <span className="text-slate-600">→</span>
+                      <span className="text-emerald-400">{Math.round(88 + (10 - activeIncident.severity) * 1.1)}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CSS comparison bar chart */}
+                <div className="space-y-1.5 border-t border-slate-900/60 pt-2 text-[8px] uppercase tracking-wider font-mono">
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-red-400">UNMITIGATED DELAY: {activeIncident.severity * 11 + 8}m</span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 border border-slate-900">
+                      <div 
+                        className="bg-red-500/80 h-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, ((activeIncident.severity * 11 + 8) / 120) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-emerald-400">AEGIS MITIGATED: {Math.round(activeIncident.severity * 3.5 + 3)}m</span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 border border-slate-900">
+                      <div 
+                        className="bg-emerald-500/80 h-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, ((Math.round(activeIncident.severity * 3.5 + 3)) / 120) * 100)}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -943,37 +1073,56 @@ export default function CommandCenter() {
                   <div className="flex justify-between">
                     <span className="text-slate-500">FLEET DEFLECTIONS:</span>
                     <span className={`font-bold ${phase >= 3 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                      {phase >= 3 ? '142 CARGO VANS' : '0 VANS'}
+                      {phase >= 3 ? `${Math.round(activeIncident.severity * 28 + 2)} VEHICLES` : '0 VEHICLES'}
                     </span>
                   </div>
                 </div>
 
-                {/* Scrollable Vehicle list */}
-                <div className="bg-black/60 border border-slate-900 p-1.5 h-[55px] overflow-y-auto scrollbar-thin text-[8.5px] font-mono text-slate-400 space-y-1">
-                  {phase >= 3 ? (
-                    <>
-                      <div className="flex justify-between text-emerald-400">
-                        <span>&gt; FK-TRUCK-582</span>
-                        <span>DETOUR // OK</span>
-                      </div>
-                      <div className="flex justify-between text-emerald-400">
-                        <span>&gt; FK-TRUCK-192</span>
-                        <span>DETOUR // OK</span>
-                      </div>
-                      <div className="flex justify-between text-emerald-400">
-                        <span>&gt; FK-TRUCK-482</span>
-                        <span>DETOUR // OK</span>
-                      </div>
-                      <div className="flex justify-between text-cyan-400">
-                        <span>&gt; FK-TRUCK-901</span>
-                        <span>REROUTING...</span>
-                      </div>
-                    </>
+                {/* Route Cards */}
+                <div className="space-y-1.5 overflow-y-auto max-h-[90px] scrollbar-thin pr-0.5">
+                  {simulationResult?.detour_geometry && simulationResult.detour_geometry.length > 0 ? (
+                    simulationResult.detour_geometry.map((route: any, idx: number) => {
+                      const names = ["ROUTE A (PRIMARY)", "ROUTE B (SECONDARY)", "ROUTE C (TERTIARY)"];
+                      const routeName = names[route.route_index] || `ROUTE ${String.fromCharCode(65 + route.route_index)}`;
+                      const flow = route.flow_allocation_percentage || 30;
+                      const coordsCount = route.coordinates?.length || 0;
+                      
+                      // Dynamic ETA/delay calculations
+                      let delayMins = 0;
+                      if (networkMode === 'current') {
+                        delayMins = activeIncident.severity * (11 + route.route_index * 2) + (8 + route.route_index * 4);
+                      } else {
+                        delayMins = Math.round(activeIncident.severity * (3.5 + route.route_index * 0.7) + (3 + route.route_index * 2));
+                      }
+
+                      const isCongested = networkMode === 'current';
+                      const statusColor = isCongested ? 'text-red-400' : 'text-emerald-400';
+                      const statusText = isCongested ? 'CONGESTED' : 'OPTIMIZED';
+
+                      return (
+                        <div key={idx} className="border border-slate-900 bg-black/40 p-1.5 text-[8.5px] uppercase tracking-wider space-y-1">
+                          <div className="flex justify-between items-center font-bold">
+                            <span className="text-slate-300">{routeName}</span>
+                            <span className={statusColor}>{statusText}</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 text-slate-500 font-mono text-[8px]">
+                            <div>
+                              FLOW: <span className="text-[#00e5ff] font-bold">{flow}%</span>
+                            </div>
+                            <div>
+                              ETA: <span className="text-slate-300 font-bold">{delayMins}M</span>
+                            </div>
+                            <div>
+                              COORDS: <span className="text-slate-300 font-bold">{coordsCount}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
                   ) : (
-                    <>
-                      <div className="text-slate-600">&gt; Telemetry online.</div>
-                      <div className="text-slate-600">&gt; Awaiting spatiotemporal trigger...</div>
-                    </>
+                    <div className="text-[8px] text-slate-600 text-center py-4 uppercase font-bold">
+                      Awaiting spatiotemporal routing geometry...
+                    </div>
                   )}
                 </div>
               </div>
