@@ -32,12 +32,12 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
     );
   }
 
-  // Calculate mock delays based on incident severity
   const severity = activeIncident.severity || 5;
-  const baselineDelay = severity * 11 + 8; // minutes
-  const optimizedDelay = Math.round(severity * 3.5 + 3); // minutes
-  const delaySaved = baselineDelay - optimizedDelay;
-  const percentageCut = Math.round((delaySaved / baselineDelay) * 100);
+  const baselineDelay = simResult?.metrics ? `${simResult.metrics.baseline_delay_mins}` : "...";
+  const optimizedDelay = simResult?.metrics ? `${simResult.metrics.mitigated_delay_mins}` : "...";
+  const percentageCut = simResult?.metrics 
+    ? Math.round(((simResult.metrics.baseline_delay_mins - simResult.metrics.mitigated_delay_mins) / simResult.metrics.baseline_delay_mins) * 100)
+    : 0;
 
   return (
     <div className="flex flex-col gap-4">

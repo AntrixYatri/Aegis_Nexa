@@ -656,7 +656,7 @@ export default function MapContainer({
   }
 
   return (
-    <div className="w-full h-full min-h-[350px] md:min-h-[450px] lg:min-h-[500px] xl:min-h-[550px] bg-[#050507] relative">
+    <div className="w-full h-full bg-[#050507] relative">
       {/* Main synchronized Deck.GL + MapLibre stack */}
       <DeckGL
         viewState={viewState}

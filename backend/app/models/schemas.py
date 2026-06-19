@@ -34,6 +34,18 @@ class DetourRoute(BaseModel):
     flow_allocation_percentage: float
     coordinates: List[List[float]]
 
+class SpatiotemporalMetrics(BaseModel):
+    baseline_delay_mins: int
+    mitigated_delay_mins: int
+    congestion_index_before: int
+    congestion_index_after: int
+    affected_nodes_before: int
+    affected_nodes_after: int
+    network_efficiency_before: int
+    network_efficiency_after: int
+    congestion_trend: List[int]
+    efficiency_trend: List[int]
+
 # ---------------------------------------------------------
 # ENGINEER 1's ROUTING OUTPUT / API RESPONSES
 # ---------------------------------------------------------
@@ -43,6 +55,7 @@ class EventSimulationResponse(BaseModel):
     impacted_nodes: List[ImpactedNode]
     detour_geometry: List[DetourRoute]
     historical_analytics: HistoricalAnalytics
+    metrics: SpatiotemporalMetrics
 
 # ---------------------------------------------------------
 # ENGINEER 2's INTELLIGENCE OUTPUT

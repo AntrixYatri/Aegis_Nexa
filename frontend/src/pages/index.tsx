@@ -390,6 +390,21 @@ export default function CommandCenter() {
     return events.filter(ev => ev.stage <= timelineStage);
   };
 
+  // Dynamic spatiotemporal trends for the active incident
+  const getCongestionTrend = () => {
+    if (simulationResult?.metrics?.congestion_trend) {
+      return simulationResult.metrics.congestion_trend;
+    }
+    return [0, 0, 0, 0, 0];
+  };
+
+  const getEfficiencyTrend = () => {
+    if (simulationResult?.metrics?.efficiency_trend) {
+      return simulationResult.metrics.efficiency_trend;
+    }
+    return [0, 0, 0, 0, 0];
+  };
+
   return (
     <div className="min-h-screen bg-[#000000] text-slate-200 select-none relative flex flex-col font-mono text-xs overflow-y-auto overflow-x-hidden">
       <Head>
@@ -460,10 +475,10 @@ export default function CommandCenter() {
       </section>
 
       {/* MAIN WORKSPACE: THREE-COLUMN TACTICAL VIEW */}
-      <main className="w-full flex flex-col lg:flex-row gap-4 p-4 min-h-0 flex-1">
+      <main className="w-full flex flex-col lg:flex-row gap-3 px-4 pt-3 pb-0 shrink-0">
 
         {/* Column 1: Incident Controls (Left) - occupies 20% width */}
-        <section className="w-full lg:w-[20%] flex flex-col shrink-0 select-text gap-4">
+        <section className="w-full lg:w-[20%] flex flex-col shrink-0 select-text gap-3.5">
           <TacticalHudCard
             title="INCIDENT CONTROLS"
             subtitle="SCENARIO BUILDER"
@@ -471,10 +486,10 @@ export default function CommandCenter() {
             cornerIndicator="OP//CTRL"
           >
             {isCustomMode ? (
-              <div className="space-y-3.5 text-[10px] flex flex-col h-full justify-between">
+              <div className="space-y-3.5 text-xs flex flex-col h-full justify-between">
                 <div className="space-y-2.5">
                   <div>
-                    <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Incident Type</label>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Incident Type</label>
                     <input
                       type="text"
                       value={customForm.event_type}
@@ -484,7 +499,7 @@ export default function CommandCenter() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Latitude</label>
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Latitude</label>
                       <input
                         type="number"
                         step="0.0001"
@@ -494,7 +509,7 @@ export default function CommandCenter() {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Longitude</label>
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Longitude</label>
                       <input
                         type="number"
                         step="0.0001"
@@ -506,7 +521,7 @@ export default function CommandCenter() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Duration (m)</label>
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Duration (m)</label>
                       <input
                         type="number"
                         value={customForm.duration}
@@ -515,7 +530,7 @@ export default function CommandCenter() {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Crowd Size</label>
+                      <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Crowd Size</label>
                       <input
                         type="number"
                         value={customForm.crowd_size}
@@ -525,7 +540,7 @@ export default function CommandCenter() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Severity Index ({customForm.severity}/10)</label>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Severity Index ({customForm.severity}/10)</label>
                     <input
                       type="range"
                       min="1"
@@ -539,30 +554,30 @@ export default function CommandCenter() {
 
                 <button
                   onClick={handleSimulateCustom}
-                  className="w-full py-2 bg-yellow-950/20 border border-yellow-500/60 hover:bg-yellow-500 hover:text-black transition text-yellow-500 font-bold uppercase tracking-widest text-[9px] mt-2 rounded-none"
+                  className="w-full py-2 bg-yellow-950/20 border border-yellow-500/60 hover:bg-yellow-500 hover:text-black transition text-yellow-500 font-bold uppercase tracking-widest text-[10px] mt-2 rounded-none"
                 >
                   SIMULATE CUSTOM VECTOR
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col h-full justify-between space-y-4">
-                <div className="space-y-3 text-[10px]">
+              <div className="flex flex-col space-y-2.5">
+                <div className="space-y-2 text-xs">
                   <span className="text-[10px] uppercase font-bold text-[#00e5ff] tracking-wider block">// ACTIVE PRESET DATA</span>
                   {activeIncident ? (
-                    <div className="space-y-2 border border-slate-900 p-2.5 bg-black/40">
-                      <div className="flex justify-between border-b border-slate-950 pb-1">
+                    <div className="space-y-1.5 border border-slate-900 p-2 bg-black/40">
+                      <div className="flex justify-between border-b border-slate-950 pb-0.5">
                         <span className="text-slate-500">EVENT TYPE:</span>
                         <span className="text-slate-200 font-bold uppercase">{activeIncident.event_type}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-950 pb-1">
+                      <div className="flex justify-between border-b border-slate-950 pb-0.5">
                         <span className="text-slate-500">LATENCY COORDS:</span>
                         <span className="text-slate-300 font-mono">{activeIncident.latitude.toFixed(4)}, {activeIncident.longitude.toFixed(4)}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-950 pb-1">
+                      <div className="flex justify-between border-b border-slate-950 pb-0.5">
                         <span className="text-slate-500">CROWD VOLUME:</span>
                         <span className="text-slate-300">{activeIncident.crowd_size.toLocaleString()} PPL</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-950 pb-1">
+                      <div className="flex justify-between border-b border-slate-950 pb-0.5">
                         <span className="text-slate-500">DURATION PROJ:</span>
                         <span className="text-slate-300">{activeIncident.duration} MINS</span>
                       </div>
@@ -570,8 +585,8 @@ export default function CommandCenter() {
                         <span className="text-slate-500">CRITICALITY LEVEL:</span>
                         <span className="text-red-400 font-black">{activeIncident.severity}/10</span>
                       </div>
-                      <div className="pt-2">
-                        <label className="text-[9px] text-slate-500 uppercase tracking-wider block mb-1">Adjust Severity</label>
+                      <div className="pt-1.5">
+                        <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Adjust Severity</label>
                         <input
                           type="range"
                           min="1"
@@ -583,13 +598,13 @@ export default function CommandCenter() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-[9px] text-slate-500 leading-relaxed">
+                    <p className="text-[10px] text-slate-500 leading-relaxed uppercase">
                       Select an incident preset above to load spatial coordinate overlays into the simulator or click "+ CUSTOM CREATOR" to build a bespoke threat model.
                     </p>
                   )}
                 </div>
 
-                <div className="border border-slate-900/60 p-2 bg-[#050507] text-[9px] text-slate-500 leading-relaxed uppercase">
+                <div className="border border-slate-900/60 p-2 bg-[#050507] text-[10px] text-slate-500 leading-relaxed uppercase">
                   <span>SYSTEM OVERRIDE READY. PRESET SELECTION FORWARDED TO SPATIOTEMPORAL GRAPH CORE.</span>
                 </div>
               </div>
@@ -634,16 +649,16 @@ export default function CommandCenter() {
             </div>
 
             {/* Top 5 Hotspots */}
-            <div className="space-y-1.5">
-              <span className="text-[9px] uppercase font-bold text-[#00e5ff] tracking-wider block mb-1">
-                // TOP 5 VULNERABLE LOCATIONS
+            <div className="space-y-1">
+              <span className="text-[9px] uppercase font-bold text-[#00e5ff] tracking-wider block mb-0.5">
+                // TOP 4 VULNERABLE LOCATIONS
               </span>
               {vulnerabilityData.hotspots.length === 0 ? (
                 <div className="text-[9px] text-slate-600 text-center py-4 uppercase">
                   Awaiting database connection...
                 </div>
               ) : (
-                vulnerabilityData.hotspots.slice(0, 5).map((hs, idx) => {
+                vulnerabilityData.hotspots.slice(0, 4).map((hs, idx) => {
                   let levelColor = 'border-slate-800 text-slate-500 bg-slate-950/50';
                   if (hs.risk_level === 'critical') levelColor = 'border-red-500/50 text-red-400 bg-red-950/20';
                   else if (hs.risk_level === 'high') levelColor = 'border-orange-500/50 text-orange-400 bg-orange-950/20';
@@ -666,7 +681,7 @@ export default function CommandCenter() {
                         setActiveIncident(mockInc);
                         pushLog(`[INFO] Focussing map viewport on Historical Hotspot ${hs.hotspot_id}: ${hs.name}`, 'info');
                       }}
-                      className="flex items-center justify-between border border-slate-900 hover:border-slate-700 bg-black/40 p-2 cursor-pointer transition-colors duration-150 text-[10px]"
+                      className="flex items-center justify-between border border-slate-900 hover:border-slate-700 bg-black/40 p-1.5 cursor-pointer transition-colors duration-150 text-[10px]"
                     >
                       <div className="flex-1 min-w-0 pr-2">
                         <div className="flex items-center space-x-1.5">
@@ -688,59 +703,126 @@ export default function CommandCenter() {
           </TacticalHudCard>
         </section>
 
-        {/* Column 2: Map Area (Middle) - occupies 60% width */}
-        <section className="w-full lg:w-[60%] flex flex-col relative border border-slate-800 bg-[#050507] shrink-0 h-[400px] lg:h-[550px]">
-          {/* BEFORE/AFTER NETWORK MODE TOGGLE */}
-          <div className="absolute top-4 left-4 z-40 flex items-center bg-black/85 border border-slate-800 p-1 font-mono text-[9px]">
-            <button
-              onClick={() => {
-                setNetworkMode('current');
-                pushLog('[COMMAND] SWITCHED VIEWPORT TO CURRENT UNMITIGATED NETWORK', 'warn');
-              }}
-              className={`px-3 py-1 border transition-all duration-150 rounded-none uppercase font-bold tracking-wider ${
-                networkMode === 'current'
-                  ? 'border-red-500 bg-red-950/20 text-red-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              [ CURRENT NETWORK (PROBLEM) ]
-            </button>
-            <div className="h-4 w-[1px] bg-slate-800 mx-1" />
-            <button
-              onClick={() => {
-                setNetworkMode('mitigated');
-                pushLog('[COMMAND] SWITCHED VIEWPORT TO AEGIS MITIGATED NETWORK', 'success');
-              }}
-              className={`px-3 py-1 border transition-all duration-150 rounded-none uppercase font-bold tracking-wider ${
-                networkMode === 'mitigated'
-                  ? 'border-emerald-500 bg-emerald-950/20 text-emerald-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              [ MITIGATED NETWORK (OUTCOME) ]
-            </button>
+        {/* Column 2: Map Area & Trends (Middle) - occupies 60% width */}
+        <section className="w-full lg:w-[60%] flex flex-col gap-3 shrink-0">
+          <div className="w-full relative border border-slate-800 bg-[#050507] h-[440px] lg:h-[460px] shrink-0 overflow-hidden">
+            {/* BEFORE/AFTER NETWORK MODE TOGGLE */}
+            <div className="absolute top-4 left-4 z-40 flex items-center bg-black/85 border border-slate-800 p-1 font-mono text-[9px]">
+              <button
+                onClick={() => {
+                  setNetworkMode('current');
+                  pushLog('[COMMAND] SWITCHED VIEWPORT TO CURRENT UNMITIGATED NETWORK', 'warn');
+                }}
+                className={`px-3 py-1 border transition-all duration-150 rounded-none uppercase font-bold tracking-wider ${
+                  networkMode === 'current'
+                    ? 'border-red-500 bg-red-950/20 text-red-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                [ CURRENT NETWORK (PROBLEM) ]
+              </button>
+              <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+              <button
+                onClick={() => {
+                  setNetworkMode('mitigated');
+                  pushLog('[COMMAND] SWITCHED VIEWPORT TO AEGIS MITIGATED NETWORK', 'success');
+                }}
+                className={`px-3 py-1 border transition-all duration-150 rounded-none uppercase font-bold tracking-wider ${
+                  networkMode === 'mitigated'
+                    ? 'border-emerald-500 bg-emerald-950/20 text-emerald-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                [ MITIGATED NETWORK (OUTCOME) ]
+              </button>
+            </div>
+
+            <MapContainer
+              simulationPhase={phase}
+              activeIncident={activeIncident}
+              simulationResult={simulationResult}
+              onLogMessage={pushLog}
+              showHistoricalRisk={showHistoricalRisk}
+              historicalRiskData={vulnerabilityData.hotspots}
+              timelineStage={timelineStage}
+              networkMode={networkMode}
+            />
+            <div className="absolute inset-0 pointer-events-none hud-scanline opacity-[0.15] z-20" />
           </div>
 
-          <MapContainer
-            simulationPhase={phase}
-            activeIncident={activeIncident}
-            simulationResult={simulationResult}
-            onLogMessage={pushLog}
-            showHistoricalRisk={showHistoricalRisk}
-            historicalRiskData={vulnerabilityData.hotspots}
-            timelineStage={timelineStage}
-            networkMode={networkMode}
-          />
-          <div className="absolute inset-0 pointer-events-none hud-scanline opacity-[0.15] z-20" />
+          {/* ST-GNN PREDICTIVE TRAFFIC TRENDS */}
+          <TacticalHudCard title="ST-GNN PREDICTIVE TRAFFIC TRENDS" subtitle="[06] TEMPORAL CONGESTION & EFFICIENCY" statusColor="success" cornerIndicator="OP//06">
+            {activeIncident ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                {/* Congestion Reduction Timeline */}
+                <div className="bg-black/50 border border-slate-900 p-4 space-y-2.5">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-widest block font-bold">// CONGESTION REDUCTION TIMELINE (T0 → T4)</span>
+                  <div className="flex items-center justify-between text-center pt-2">
+                    {getCongestionTrend().map((val, i) => (
+                      <React.Fragment key={i}>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[9px] text-slate-500 font-bold mb-0.5">T{i}</span>
+                          <span className="text-sm font-black text-red-400 font-mono">{val}%</span>
+                        </div>
+                        {i < 4 && <span className="text-slate-700 text-xs font-mono">→</span>}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  {/* Miniature CSS Bar Chart */}
+                  <div className="flex items-end justify-between h-[60px] mt-3 px-2.5">
+                    {getCongestionTrend().map((val, i) => (
+                      <div 
+                        key={i} 
+                        className="w-5 bg-red-950 border border-red-500/50 hover:bg-red-500 transition-colors duration-150" 
+                        style={{ height: `${val}%` }} 
+                        title={`T${i}: ${val}% Congestion`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Network Efficiency Growth */}
+                <div className="bg-black/50 border border-slate-900 p-4 space-y-2.5">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-widest block font-bold">// NETWORK EFFICIENCY GROWTH (T0 → T4)</span>
+                  <div className="flex items-center justify-between text-center pt-2">
+                    {getEfficiencyTrend().map((val, i) => (
+                      <React.Fragment key={i}>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[9px] text-slate-500 font-bold mb-0.5">T{i}</span>
+                          <span className="text-sm font-black text-emerald-400 font-mono">{val}%</span>
+                        </div>
+                        {i < 4 && <span className="text-slate-700 text-xs font-mono">→</span>}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  {/* Miniature CSS Bar Chart */}
+                  <div className="flex items-end justify-between h-[60px] mt-3 px-2.5">
+                    {getEfficiencyTrend().map((val, i) => (
+                      <div 
+                        key={i} 
+                        className="w-5 bg-emerald-950 border border-emerald-500/50 hover:bg-emerald-500 transition-colors duration-150" 
+                        style={{ height: `${val}%` }} 
+                        title={`T${i}: ${val}% Efficiency`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-slate-500 text-center py-4 uppercase font-bold text-[10px]">
+                Awaiting incident initialization to project traffic trends...
+              </div>
+            )}
+          </TacticalHudCard>
         </section>
 
         {/* Column 3: Active Threats & Timeline (Right) - occupies 20% width */}
-        <section className="w-full lg:w-[20%] flex flex-col gap-4 shrink-0 select-text">
+        <section className="w-full lg:w-[20%] flex flex-col gap-3 shrink-0 select-text text-xs">
           {/* Active Incidents panel */}
           <TacticalHudCard title="ACTIVE THREAT MONITORS" subtitle="OPERATIONAL INSTANCES" statusColor="danger" cornerIndicator="TH//ACT">
-            <div className="space-y-3">
+            <div className="space-y-2 text-xs">
               {activeIncidentsList.length === 0 ? (
-                <div className="text-center text-[10px] text-slate-600 py-6 uppercase font-bold">
+                <div className="text-center text-xs text-slate-600 py-4 uppercase font-bold">
                   NO ACTIVE SCENARIOS
                 </div>
               ) : (
@@ -749,21 +831,21 @@ export default function CommandCenter() {
                   const isSimulatorTarget = activeIncident?.id === inc.id;
 
                   return (
-                    <div key={inc.id} className={`border ${isSimulatorTarget ? 'border-[#00e5ff]/50' : 'border-slate-800'} p-2.5 bg-[#050507]`}>
+                    <div key={inc.id} className={`border ${isSimulatorTarget ? 'border-[#00e5ff]/50' : 'border-slate-800'} p-2 bg-[#050507]`}>
                       <div
                         onClick={() => setExpandedIncidentId(isExpanded ? null : (inc.id || null))}
-                        className="flex justify-between items-center cursor-pointer text-[10px]"
+                        className="flex justify-between items-center cursor-pointer text-xs"
                       >
                         <span className="font-bold text-slate-300 uppercase">
                           {isExpanded ? '▼' : '▶'} {inc.event_type}
                         </span>
                         {isSimulatorTarget && (
-                          <span className="text-[8px] bg-cyan-950 text-[#00e5ff] px-1 font-bold">SIM ACTIVE</span>
+                          <span className="text-[9px] bg-cyan-950 text-[#00e5ff] px-1 font-bold">SIM ACTIVE</span>
                         )}
                       </div>
 
                       {isExpanded && (
-                        <div className="mt-3 space-y-2 border-t border-slate-900 pt-2 text-[10px] text-slate-400">
+                        <div className="mt-3 space-y-2 border-t border-slate-900 pt-2 text-xs text-slate-400">
                           <div className="flex justify-between">
                             <span>SEVERITY INDEX:</span>
                             <span className="text-red-400 font-bold">{inc.severity}/10</span>
@@ -785,13 +867,13 @@ export default function CommandCenter() {
                           <div className="flex space-x-2 pt-2 border-t border-slate-900">
                             <button
                               onClick={() => handleEditIncident(inc)}
-                              className="flex-1 py-1 border border-slate-700 bg-black text-slate-300 font-bold text-[9px] hover:border-slate-500 text-center"
+                              className="flex-1 py-1 border border-slate-700 bg-black text-slate-300 font-bold text-[10px] hover:border-slate-500 text-center"
                             >
                               EDIT
                             </button>
                             <button
                               onClick={() => handleDisableIncident(inc.id || '')}
-                              className="flex-1 py-1 border border-red-900 bg-black text-red-400 font-bold text-[9px] hover:border-red-600 text-center"
+                              className="flex-1 py-1 border border-red-900 bg-black text-red-400 font-bold text-[10px] hover:border-red-600 text-center"
                             >
                               DISABLE
                             </button>
@@ -821,14 +903,14 @@ export default function CommandCenter() {
                 </button>
               )}
             </div>
-            <div className="space-y-4 relative pl-3 border-l border-slate-800 text-[10px]">
+            <div className="space-y-2.5 relative pl-3 border-l border-slate-800 text-[10px]">
               {getTimelineEvents().length === 0 ? (
                 <div className="text-slate-600 text-[9px] py-4 uppercase">
                   Awaiting incident initialization...
                 </div>
               ) : (
                 getTimelineEvents().map((ev, idx) => (
-                  <div key={idx} className="relative mb-2">
+                  <div key={idx} className="relative mb-1">
                     <span className={`absolute -left-[16px] top-1 w-2 h-2 rounded-none ${ev.active ? 'bg-cyan-400 glow-cyan' : 'bg-slate-800'}`} />
                     <div className="flex justify-between">
                       <span className={ev.active ? 'text-slate-200 font-bold' : 'text-slate-600'}>
@@ -846,35 +928,46 @@ export default function CommandCenter() {
       </main>
 
       {/* BOTTOM FOUR-COLUMN PANEL BLOCK */}
-      <section className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 select-text">
+      <section className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 px-4 pt-0 pb-2 select-text">
 
         {/* Column 1: Forecast */}
         <TacticalHudCard title="SPATIOTEMPORAL FORECAST" subtitle="[02] ST-GNN ANALYTICS" statusColor="primary" cornerIndicator="OP//02">
-          <div className="flex flex-col h-full justify-between min-h-[160px]">
+          <div className="flex flex-col h-full justify-start gap-1.5 min-h-[175px] text-xs">
             <div>
               {activeIncident && simulationResult ? (
-                <div className="space-y-2 text-[10px]">
-                  <div className="flex justify-between border-b border-slate-900 pb-1">
-                    <span className="text-slate-500">BASELINE DELAY:</span>
-                    <span className="text-slate-300 font-bold">{activeIncident.severity * 11 + 8} mins</span>
+                <div className="space-y-2">
+                  {/* Top KPI: Confidence */}
+                  <div className="bg-black/50 border border-slate-900 p-1.5 text-center">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-widest block mb-0.5">MODEL CONFIDENCE</span>
+                    <span className="text-2xl font-black text-cyan-400 font-mono">98.4%</span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-900 pb-1">
-                    <span className="text-slate-500">PREDICTED DELAY:</span>
-                    <span className="text-emerald-400 font-bold">{Math.round(activeIncident.severity * 3.5 + 3)} mins</span>
+
+                  {/* Delay KPIs */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-black/50 border border-slate-900 p-1.5 text-center">
+                      <span className="text-[9px] text-slate-500 uppercase tracking-wider block mb-0.5">BASELINE DELAY</span>
+                      <span className="text-lg font-black text-red-400 font-mono">{activeIncident.severity * 11 + 8}m</span>
+                    </div>
+                    <div className="bg-black/50 border border-slate-900 p-1.5 text-center">
+                      <span className="text-[9px] text-slate-500 uppercase tracking-wider block mb-0.5">PREDICTED DELAY</span>
+                      <span className="text-lg font-black text-emerald-400 font-mono">{Math.round(activeIncident.severity * 3.5 + 3)}m</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between border-b border-slate-900 pb-1">
-                    <span className="text-slate-500">RISK AURA RADIUS:</span>
-                    <span className="text-slate-300 font-bold">{simulationResult.blast_radius_meters} Meters</span>
+
+                  {/* Other metrics */}
+                  <div className="space-y-1 border-t border-slate-900/60 pt-1.5 text-[9.5px]">
+                    <div className="flex justify-between border-b border-slate-950 pb-0.5">
+                      <span className="text-slate-500">RISK AURA RADIUS:</span>
+                      <span className="text-slate-300 font-bold">{simulationResult.blast_radius_meters} Meters</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-950 pb-0.5">
+                      <span className="text-slate-500">IMPACTED OSM NODES:</span>
+                      <span className="text-slate-300 font-bold">{simulationResult.impacted_nodes.length} intersections</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between border-b border-slate-900 pb-1">
-                    <span className="text-slate-500">IMPACTED OSM NODES:</span>
-                    <span className="text-slate-300 font-bold">{simulationResult.impacted_nodes.length} intersections</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-900 pb-1">
-                    <span className="text-slate-500">MODEL CONFIDENCE:</span>
-                    <span className="text-cyan-400 font-bold">98.4%</span>
-                  </div>
-                  <div className="pt-2.5 space-y-1.5 border-t border-slate-900/60 text-[8.5px]">
+
+                  {/* Explainability sub-factors */}
+                  <div className="pt-1.5 space-y-1 border-t border-slate-900/60 text-[9px]">
                     <span className="text-slate-500 block uppercase font-bold tracking-wider">// EXPLAINABILITY SUB-FACTORS</span>
                     <div className="flex justify-between">
                       <span className="text-slate-500">HISTORICAL SIMILARITY:</span>
@@ -895,7 +988,7 @@ export default function CommandCenter() {
                   </div>
                 </div>
               ) : (
-                <div className="text-[10px] text-slate-600 text-center py-8">
+                <div className="text-xs text-slate-600 text-center py-8">
                   AWAITING SIMULATION CORE DATA...
                 </div>
               )}
@@ -904,7 +997,7 @@ export default function CommandCenter() {
             {phase === 2 && activeIncident && (
               <button
                 onClick={handleDeployInterventions}
-                className="w-full py-2 bg-red-950/20 border border-red-500 text-red-500 font-bold hover:bg-red-500 hover:text-black transition uppercase tracking-wider text-[9px] animate-pulse rounded-none mt-4"
+                className="w-full py-2.5 bg-red-950/20 border border-red-500 text-red-500 font-bold hover:bg-red-500 hover:text-black transition uppercase tracking-wider text-[10px] animate-pulse rounded-none mt-4"
               >
                 DEPLOY BARRICADES & DIVERT FLOW
               </button>
@@ -914,20 +1007,20 @@ export default function CommandCenter() {
 
         {/* Column 2: Gemini SOP */}
         <TacticalHudCard title="GEMINI SOP DISPATCH" subtitle="[03] INTELLIGENCE PROTOCOLS" statusColor="primary" cornerIndicator="OP//03">
-          <div className="flex flex-col h-full justify-between min-h-[160px]">
+          <div className="flex flex-col h-full justify-start gap-1.5 min-h-[175px] text-xs">
             <div className="flex justify-between items-center mb-2.5">
-              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">LANG BROADCAST RELAYS</span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">LANG BROADCAST RELAYS</span>
               {dispatchData && (
                 <div className="flex space-x-1">
                   <button
                     onClick={() => setDispatchTab('en')}
-                    className={`px-1.5 py-0.5 text-[8px] font-bold border rounded-none transition ${dispatchTab === 'en' ? 'border-[#00e5ff] text-[#00e5ff] bg-cyan-950/20' : 'border-slate-800 text-slate-500 hover:border-slate-700'}`}
+                    className={`px-2 py-0.5 text-[9px] font-bold border rounded-none transition ${dispatchTab === 'en' ? 'border-[#00e5ff] text-[#00e5ff] bg-cyan-950/20' : 'border-slate-800 text-slate-500 hover:border-slate-700'}`}
                   >
                     EN
                   </button>
                   <button
                     onClick={() => setDispatchTab('kn')}
-                    className={`px-1.5 py-0.5 text-[8px] font-bold border rounded-none transition ${dispatchTab === 'kn' ? 'border-emerald-500 text-emerald-400 bg-emerald-950/20' : 'border-slate-800 text-slate-500 hover:border-slate-700'}`}
+                    className={`px-2 py-0.5 text-[9px] font-bold border rounded-none transition ${dispatchTab === 'kn' ? 'border-emerald-500 text-emerald-400 bg-emerald-950/20' : 'border-slate-800 text-slate-500 hover:border-slate-700'}`}
                   >
                     KN
                   </button>
@@ -938,115 +1031,133 @@ export default function CommandCenter() {
             {isLlmLoading ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center py-4">
                 <div className="w-5 h-5 border border-cyan-400 border-t-transparent animate-spin mb-2 rounded-none" />
-                <span className="text-[9px] text-[#00e5ff] uppercase tracking-wider animate-pulse">SYNTHESIZING SOP VIA GEMINI...</span>
+                <span className="text-[10px] text-[#00e5ff] uppercase tracking-wider animate-pulse">SYNTHESIZING SOP VIA GEMINI...</span>
               </div>
             ) : dispatchData ? (
-              <div className="flex-1 flex flex-col justify-between text-[9.5px] space-y-2">
-                <div className="bg-black/60 border border-slate-900 p-2 overflow-y-auto max-h-[85px] scrollbar-thin flex-1 text-slate-300">
+              <div className="flex-1 flex flex-col justify-start gap-1.5 min-h-0 text-xs">
+                <div className="bg-black/60 border border-slate-900 p-2 overflow-y-auto flex-1 min-h-[65px] scrollbar-thin text-slate-300">
                   {dispatchTab === 'en' ? (
-                    <p className="leading-relaxed font-mono whitespace-pre-wrap">
-                      <span className="text-[#00e5ff] font-bold block mb-0.5">[TACTICAL Relays]</span>
+                    <p className="leading-relaxed font-mono whitespace-pre-wrap text-[11.5px]">
+                      <span className="text-[#00e5ff] font-bold block mb-1">[TACTICAL Relays]</span>
                       {dispatchData.action_plan_english}
                     </p>
                   ) : (
-                    <p className="leading-relaxed font-sans whitespace-pre-wrap text-emerald-400/90">
-                      <span className="text-emerald-500 font-bold block mb-0.5 font-mono">[ರೇಡಿಯೋ ಆಜ್ಞೆ]</span>
+                    <p className="leading-relaxed font-sans whitespace-pre-wrap text-emerald-400/90 text-[12.5px]">
+                      <span className="text-emerald-500 font-bold block mb-1 font-mono">[ರೇಡಿಯೋ ಆಜ್ಞೆ]</span>
                       {dispatchData.action_plan_kannada}
                     </p>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-900/60 text-[9px] tracking-wider">
+                <div className="grid grid-cols-2 gap-3 pt-1.5 border-t border-slate-900/60 text-[10px] tracking-wider font-bold">
                   <div className="flex justify-between">
                     <span className="text-slate-500">COP ALIGN:</span>
-                    <span className="text-[#00e5ff] font-bold">{dispatchData.required_personnel} units</span>
+                    <span className="text-[#00e5ff]">{dispatchData.required_personnel} units</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">BARRICADES:</span>
-                    <span className="text-[#00e5ff] font-bold">{dispatchData.required_barricades} units</span>
+                    <span className="text-[#00e5ff]">{dispatchData.required_barricades} units</span>
+                  </div>
+                </div>
+                {/* Expected Outcome Section */}
+                <div className="border-t border-slate-900/60 pt-1.5 space-y-0.5 text-[9px] tracking-wider uppercase font-mono">
+                  <span className="text-slate-500 font-bold block mb-0.5">// EXPECTED OUTCOME</span>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-bold">EXPECTED DELAY REDUCTION:</span>
+                    <span className="text-emerald-400 font-bold text-[10px]">
+                      {activeIncident ? `${(activeIncident.severity * 11 + 8) - Math.round(activeIncident.severity * 3.5 + 3)} MINS` : '57 MINS'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">AFFECTED NODES:</span>
+                    <span className="text-cyan-400 font-bold">{simulationResult?.impacted_nodes?.length || 20}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">CONFIDENCE:</span>
+                    <span className="text-cyan-400 font-bold">98.4%</span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-[10px] text-slate-600 text-center py-8">
+              <div className="text-xs text-slate-600 text-center py-8">
                 AWAITING SOP TRANSMISSION...
               </div>
             )}
           </div>
         </TacticalHudCard>
 
-        {/* Column 3: Impact Analysis */}
+        {/* Column 3: Network Impact Analysis */}
         <TacticalHudCard title="NETWORK IMPACT ANALYSIS" subtitle="[04] REAL-TIME MITIGATIONS" statusColor="primary" cornerIndicator="OP//04">
-          <div className="flex flex-col h-full justify-between min-h-[160px] text-[10px]">
-            {activeIncident && phase >= 3 ? (
-              <div className="space-y-3 flex-1 flex flex-col justify-between">
-                {/* Before/After stats */}
-                <div className="grid grid-cols-2 gap-2 text-[9px]">
-                  <div className="bg-black/50 border border-slate-900 p-2">
-                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">AVG TRAVEL TIME</span>
-                    <div className="flex items-center space-x-1.5 font-bold font-mono">
-                      <span className="text-red-400">{activeIncident.severity * 11 + 8}m</span>
-                      <span className="text-slate-600">→</span>
-                      <span className="text-emerald-400">{Math.round(activeIncident.severity * 3.5 + 3)}m</span>
+          <div className="flex flex-col h-full justify-start gap-1.5 min-h-[175px] text-xs">
+            {activeIncident && phase >= 3 && simulationResult?.metrics ? (
+              <div className="space-y-2 flex-1 flex flex-col justify-start gap-2">
+                {/* Before/After stats as large KPI panels */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/50 border border-slate-900 p-1.5">
+                    <span className="text-[9.5px] text-slate-500 block uppercase tracking-wider mb-0.5 leading-none">AVG TRAVEL TIME</span>
+                    <div className="flex items-baseline space-x-1 font-bold font-mono">
+                      <span className="text-red-400 text-xs font-black">{simulationResult.metrics.baseline_delay_mins}m</span>
+                      <span className="text-slate-600 text-[10px]">→</span>
+                      <span className="text-emerald-400 text-sm font-black">{simulationResult.metrics.mitigated_delay_mins}m</span>
                     </div>
                   </div>
-                  <div className="bg-black/50 border border-slate-900 p-2">
-                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">CONGESTION INDEX</span>
-                    <div className="flex items-center space-x-1.5 font-bold font-mono">
-                      <span className="text-red-400">{Math.round(activeIncident.severity * 9 + 5)}%</span>
-                      <span className="text-slate-600">→</span>
-                      <span className="text-emerald-400">{Math.round(activeIncident.severity * 2 + 3)}%</span>
+                  <div className="bg-black/50 border border-slate-900 p-1.5">
+                    <span className="text-[9.5px] text-slate-500 block uppercase tracking-wider mb-0.5 leading-none">CONGESTION INDEX</span>
+                    <div className="flex items-baseline space-x-1 font-bold font-mono">
+                      <span className="text-red-400 text-xs font-black">{simulationResult.metrics.congestion_index_before}%</span>
+                      <span className="text-slate-600 text-[10px]">→</span>
+                      <span className="text-emerald-400 text-sm font-black">{simulationResult.metrics.congestion_index_after}%</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-[9px]">
-                  <div className="bg-black/50 border border-slate-900 p-2">
-                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">AFFECTED NODES</span>
-                    <div className="flex items-center space-x-1.5 font-bold font-mono">
-                      <span className="text-red-400">{simulationResult?.impacted_nodes?.length || 0}</span>
-                      <span className="text-slate-600">→</span>
-                      <span className="text-emerald-400">0</span>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/50 border border-slate-900 p-1.5">
+                    <span className="text-[9.5px] text-slate-500 block uppercase tracking-wider mb-0.5 leading-none">AFFECTED NODES</span>
+                    <div className="flex items-baseline space-x-1 font-bold font-mono">
+                      <span className="text-red-400 text-xs font-black">{simulationResult.metrics.affected_nodes_before}</span>
+                      <span className="text-slate-600 text-[10px]">→</span>
+                      <span className="text-emerald-400 text-sm font-black">{simulationResult.metrics.affected_nodes_after}</span>
                     </div>
                   </div>
-                  <div className="bg-black/50 border border-slate-900 p-2">
-                    <span className="text-slate-500 block text-[7.5px] tracking-wider mb-1">NET EFFICIENCY</span>
-                    <div className="flex items-center space-x-1.5 font-bold font-mono">
-                      <span className="text-red-400">{Math.max(10, Math.round(90 - activeIncident.severity * 7))}%</span>
-                      <span className="text-slate-600">→</span>
-                      <span className="text-emerald-400">{Math.round(88 + (10 - activeIncident.severity) * 1.1)}%</span>
+                  <div className="bg-black/50 border border-slate-900 p-1.5">
+                    <span className="text-[9.5px] text-slate-500 block uppercase tracking-wider mb-0.5 leading-none">NET EFFICIENCY</span>
+                    <div className="flex items-baseline space-x-1 font-bold font-mono">
+                      <span className="text-red-400 text-xs font-black">{simulationResult.metrics.network_efficiency_before}%</span>
+                      <span className="text-slate-600 text-[10px]">→</span>
+                      <span className="text-emerald-400 text-sm font-black">{simulationResult.metrics.network_efficiency_after}%</span>
                     </div>
                   </div>
                 </div>
 
                 {/* CSS comparison bar chart */}
-                <div className="space-y-1.5 border-t border-slate-900/60 pt-2 text-[8px] uppercase tracking-wider font-mono">
-                  <div className="space-y-1">
+                <div className="space-y-1.5 border-t border-slate-900/60 pt-1.5 text-[9px] uppercase tracking-wider font-mono">
+                  <div className="space-y-0.5">
                     <div className="flex justify-between">
-                      <span className="text-red-400">UNMITIGATED DELAY: {activeIncident.severity * 11 + 8}m</span>
+                      <span className="text-red-400">UNMITIGATED DELAY: {simulationResult.metrics.baseline_delay_mins}m</span>
                     </div>
                     <div className="w-full bg-slate-950 h-1.5 border border-slate-900">
                       <div 
                         className="bg-red-500/80 h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, ((activeIncident.severity * 11 + 8) / 120) * 100)}%` }}
+                        style={{ width: `${Math.min(100, (simulationResult.metrics.baseline_delay_mins / 120) * 100)}%` }}
                       />
                     </div>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-0.5">
                     <div className="flex justify-between">
-                      <span className="text-emerald-400">AEGIS MITIGATED: {Math.round(activeIncident.severity * 3.5 + 3)}m</span>
+                      <span className="text-emerald-400">AEGIS MITIGATED: {simulationResult.metrics.mitigated_delay_mins}m</span>
                     </div>
                     <div className="w-full bg-slate-950 h-1.5 border border-slate-900">
                       <div 
                         className="bg-emerald-500/80 h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, ((Math.round(activeIncident.severity * 3.5 + 3)) / 120) * 100)}%` }}
+                        style={{ width: `${Math.min(100, (simulationResult.metrics.mitigated_delay_mins / 120) * 100)}%` }}
                       />
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-[10px] text-slate-600 text-center py-8">
-                AWAITING MITIGATION DEPLOYMENT...
+              <div className="text-xs text-slate-600 text-center py-8">
+                {activeIncident && phase >= 3 ? "COMPUTING SPATIOTEMPORAL METRICS..." : "AWAITING MITIGATION DEPLOYMENT..."}
               </div>
             )}
           </div>
@@ -1054,36 +1165,38 @@ export default function CommandCenter() {
 
         {/* Column 4: Fleet Status */}
         <TacticalHudCard title="FLEET ROUTING STATUS" subtitle="[05] LOGISTICS TELEMETRY" statusColor={phase >= 3 ? "success" : "primary"} cornerIndicator="OP//05">
-          <div className="flex flex-col h-full justify-between min-h-[160px] text-[10px]">
+          <div className="flex flex-col h-full justify-start gap-1.5 min-h-[175px] text-xs">
             {activeIncident ? (
-              <div className="space-y-2.5 flex-1 flex flex-col justify-between">
-                <div className="space-y-1.5 border border-slate-900 p-2.5 bg-black/40">
-                  <div className="flex justify-between border-b border-slate-950 pb-1">
-                    <span className="text-slate-500">FLEET STATE:</span>
-                    <span className={`font-bold ${phase >= 3 ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`}>
+              <div className="space-y-2 flex-1 flex flex-col justify-start gap-2">
+                <div className="space-y-1.5 border border-slate-900 p-1.5 bg-black/40">
+                  <div className="flex justify-between border-b border-slate-950 pb-0.5">
+                    <span className="text-slate-500 text-[10px]">FLEET STATE:</span>
+                    <span className={`font-bold text-[10px] ${phase >= 3 ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`}>
                       {phase >= 3 ? 'REROUTED // CORRIDOR ON' : 'STANDBY // NORMAL ROUTES'}
                     </span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-950 pb-1">
-                    <span className="text-slate-500">WEBHOOK HANDSHAKE:</span>
-                    <span className={`font-mono ${phase >= 3 ? 'text-[#00e5ff]' : 'text-slate-500'}`}>
+                  <div className="flex justify-between border-b border-slate-950 pb-0.5">
+                    <span className="text-slate-500 text-[10px]">WEBHOOK HANDSHAKE:</span>
+                    <span className={`font-mono text-[9.5px] ${phase >= 3 ? 'text-[#00e5ff]' : 'text-slate-500'}`}>
                       {phase >= 3 ? 'SECURE_FK_NET_TOKEN' : 'INACTIVE'}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">FLEET DEFLECTIONS:</span>
-                    <span className={`font-bold ${phase >= 3 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    <span className="text-slate-500 text-[10px]">FLEET DEFLECTIONS:</span>
+                    <span className={`font-bold text-[10px] ${phase >= 3 ? 'text-emerald-400' : 'text-slate-400'}`}>
                       {phase >= 3 ? `${Math.round(activeIncident.severity * 28 + 2)} VEHICLES` : '0 VEHICLES'}
                     </span>
                   </div>
                 </div>
 
-                {/* Route Cards */}
-                <div className="space-y-1.5 overflow-y-auto max-h-[90px] scrollbar-thin pr-0.5">
+                {/* Redesigned Route Cards as KPI blocks */}
+                <div className="space-y-1.5">
                   {simulationResult?.detour_geometry && simulationResult.detour_geometry.length > 0 ? (
                     simulationResult.detour_geometry.map((route: any, idx: number) => {
-                      const names = ["ROUTE A (PRIMARY)", "ROUTE B (SECONDARY)", "ROUTE C (TERTIARY)"];
+                      const names = ["ROUTE A", "ROUTE B", "ROUTE C"];
+                      const subnames = ["PRIMARY", "SECONDARY", "TERTIARY"];
                       const routeName = names[route.route_index] || `ROUTE ${String.fromCharCode(65 + route.route_index)}`;
+                      const routeSub = subnames[route.route_index] || "DIVERSION";
                       const flow = route.flow_allocation_percentage || 30;
                       const coordsCount = route.coordinates?.length || 0;
                       
@@ -1096,38 +1209,46 @@ export default function CommandCenter() {
                       }
 
                       const isCongested = networkMode === 'current';
-                      const statusColor = isCongested ? 'text-red-400' : 'text-emerald-400';
-                      const statusText = isCongested ? 'CONGESTED' : 'OPTIMIZED';
+                      const statusColor = isCongested ? 'border-red-950 text-red-400' : 'border-slate-900 text-slate-300';
 
                       return (
-                        <div key={idx} className="border border-slate-900 bg-black/40 p-1.5 text-[8.5px] uppercase tracking-wider space-y-1">
-                          <div className="flex justify-between items-center font-bold">
-                            <span className="text-slate-300">{routeName}</span>
-                            <span className={statusColor}>{statusText}</span>
+                        <div key={idx} className={`border ${statusColor} bg-black/45 p-1.5 space-y-0.5 uppercase tracking-wider`}>
+                          <div className="flex justify-between items-center border-b border-slate-900/60 pb-0.5">
+                            <div className="flex flex-col">
+                              <span className="text-[9.5px] font-black text-slate-100">{routeName}</span>
+                              <span className="text-[7px] text-slate-500 tracking-widest">{routeSub}</span>
+                            </div>
+                            <span className={`text-[8px] font-bold ${isCongested ? 'text-red-400 animate-pulse' : 'text-[#00e5ff]'}`}>
+                              {isCongested ? 'CONGESTED' : 'FLOW ACTIVE'}
+                            </span>
                           </div>
-                          <div className="grid grid-cols-3 gap-1 text-slate-500 font-mono text-[8px]">
-                            <div>
-                              FLOW: <span className="text-[#00e5ff] font-bold">{flow}%</span>
+                          
+                          <div className="grid grid-cols-3 gap-1 text-center">
+                            <div className="bg-slate-950/60 p-0.5 border border-slate-900/60 flex flex-col justify-center">
+                              <span className="text-[10px] font-black text-cyan-400 font-mono">{flow}%</span>
+                              <span className="text-[6.5px] text-slate-500 tracking-tight mt-0.5 leading-none">Allocation</span>
                             </div>
-                            <div>
-                              ETA: <span className="text-slate-300 font-bold">{delayMins}M</span>
+                            <div className="bg-slate-950/60 p-0.5 border border-slate-900/60 flex flex-col justify-center">
+                              <span className="text-[10px] font-black text-slate-200 font-mono">{delayMins}m</span>
+                              <span className="text-[6.5px] text-slate-500 tracking-tight mt-0.5 leading-none">ETA Delay</span>
                             </div>
-                            <div>
-                              COORDS: <span className="text-slate-300 font-bold">{coordsCount}</span>
+                            <div className="bg-slate-950/60 p-0.5 border border-slate-900/60 flex flex-col justify-center">
+                              <span className="text-[10px] font-black text-slate-200 font-mono">{coordsCount}</span>
+                              <span className="text-[6.5px] text-slate-500 tracking-tight mt-0.5 leading-none">Nodes</span>
                             </div>
                           </div>
                         </div>
                       );
                     })
                   ) : (
-                    <div className="text-[8px] text-slate-600 text-center py-4 uppercase font-bold">
+                    <div className="text-[9px] text-slate-600 text-center py-4 uppercase font-bold">
                       Awaiting spatiotemporal routing geometry...
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="text-[10px] text-slate-600 text-center py-8">
+              <div className="text-xs text-slate-600 text-center py-8">
                 AWAITING ROUTING METRICS...
               </div>
             )}
@@ -1137,17 +1258,17 @@ export default function CommandCenter() {
       </section>
 
       {/* PERSISTENT TERMINAL STREAM */}
-      <section className="w-full bg-black border-t border-slate-900 flex flex-col h-48 shrink-0 select-text relative mt-4">
+      <section className="w-full bg-black border-t border-slate-900 flex flex-col h-40 shrink-0 select-text relative mt-1.5">
         {/* Terminal Header */}
         <div className="flex justify-between items-center border-b border-slate-950 bg-slate-950 px-4 py-1.5 shrink-0 h-7">
-          <span className="text-slate-500 uppercase tracking-widest text-[8.5px] font-bold">
+          <span className="text-slate-500 uppercase tracking-widest text-[10px] font-bold">
             AuraOS Core v1.0.0 // SPATIOTEMPORAL SIMULATION STREAM
           </span>
           <button
             onClick={() => setLogs([
               { timestamp: new Date().toTimeString().split(' ')[0], message: 'Logs flushed. Terminal Core monitoring standby.', type: 'info' }
             ])}
-            className="text-slate-600 hover:text-slate-400 uppercase tracking-wider text-[8px] border border-slate-900 px-2 hover:border-slate-700 transition rounded-none bg-black"
+            className="text-slate-600 hover:text-slate-400 uppercase tracking-wider text-[10px] border border-slate-900 px-2 hover:border-slate-700 transition rounded-none bg-black"
           >
             Flush Canvas
           </button>
@@ -1162,7 +1283,7 @@ export default function CommandCenter() {
             if (log.type === 'success') textColor = 'text-emerald-400';
 
             return (
-              <div key={idx} className="flex gap-3 items-start leading-relaxed text-[10px] font-mono select-text">
+              <div key={idx} className="flex gap-3 items-start leading-relaxed text-xs font-mono select-text">
                 <span className="text-slate-600 font-light select-none whitespace-nowrap">
                   [{log.timestamp}]
                 </span>

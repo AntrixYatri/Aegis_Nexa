@@ -138,7 +138,8 @@ async def simulate_event(payload: EventSimulationRequest):
             "blast_radius_meters": simulation_results["blast_radius_meters"],
             "impacted_nodes": simulation_results["congested_nodes"],
             "detour_geometry": simulation_results["detour_geometry"],
-            "historical_analytics": historical_stats
+            "historical_analytics": historical_stats,
+            "metrics": simulation_results["metrics"]
         }
         
     except Exception as e:
