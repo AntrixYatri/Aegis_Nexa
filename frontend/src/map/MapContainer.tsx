@@ -5,6 +5,7 @@ import maplibregl from 'maplibre-gl';
 import { ScatterplotLayer, PolygonLayer, PathLayer } from '@deck.gl/layers';
 import { FlyToInterpolator } from '@deck.gl/core';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { createHistoricalRiskLayer } from './HistoricalRiskLayer';
 
 interface MapContainerProps {
   simulationPhase: 1 | 2 | 3 | 4;
@@ -14,6 +15,8 @@ interface MapContainerProps {
     msg: string,
     type: 'info' | 'warn' | 'critical' | 'success'
   ) => void;
+  showHistoricalRisk?: boolean;
+  historicalRiskData?: any[];
 }
 
 // Utility to generate a circle polygon array of coordinates
@@ -89,7 +92,9 @@ export default function MapContainer({
   simulationPhase,
   activeIncident,
   simulationResult,
-  onLogMessage
+  onLogMessage,
+  showHistoricalRisk,
+  historicalRiskData
 }: MapContainerProps) {
   const [viewState, setViewState] = useState({
     longitude: 77.5946,
@@ -135,6 +140,10 @@ export default function MapContainer({
 
   // Deck.gl layers calculation
   const layers = [];
+
+  if (showHistoricalRisk && historicalRiskData && historicalRiskData.length > 0) {
+    layers.push(createHistoricalRiskLayer(historicalRiskData));
+  }
 
   if (activeIncident && activeIncident.latitude && activeIncident.longitude) {
     const lng = activeIncident.longitude;

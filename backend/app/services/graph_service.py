@@ -3,6 +3,8 @@ import math
 import osmnx as ox
 import networkx as nx
 import numpy as np
+from itertools import islice
+
 
 def get_distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """
@@ -94,6 +96,7 @@ class GraphEngine:
         2. Applies Bureau of Public Roads (BPR) delay formulas to alternative routes.
         3. Splits traffic flow vectors across parallel paths to prevent secondary jams.
         """
+        print("[DEBUG] graph_service.py: Entering calculate_hydraulic_diversion")
         # Calculate dynamic blast radius in meters based on event severity scale (1-10)
         blast_radius = severity * 150.0  # Max 1500 meters
         
@@ -106,11 +109,13 @@ class GraphEngine:
             if dist_m <= blast_radius:
                 blocked_nodes.append(node)
 
+        print("[DEBUG] graph_service.py: Cloning original graph to G_simulated")
         # Clone original graph to simulate the counterfactual "What-If" intervention
         G_simulated = self.G.copy()
         
         # Wrap severance in a structured try-except block
         try:
+            print("[DEBUG] graph_service.py: Removing blocked nodes from G_simulated")
             G_simulated.remove_nodes_from(blocked_nodes)
             print(f"[Aegis Graph] Severed {len(blocked_nodes)} nodes within blast radius.")
         except Exception as e:
@@ -123,6 +128,7 @@ class GraphEngine:
         dest_lat = event_lat + 0.015
         dest_lng = event_lng + 0.015
 
+        print("[DEBUG] graph_service.py: Snapping origin/destination coordinates to nearest graph nodes")
         # Snap coordinates cleanly using our pure-Python find_nearest_node
         try:
             orig = find_nearest_node(self.G_unprojected, orig_lng, orig_lat)
@@ -134,20 +140,45 @@ class GraphEngine:
             orig = nodes_list[0]
             dest = nodes_list[-1]
 
+        print("[DEBUG] graph_service.py: Converting MultiDiGraph to simple DiGraph")
         # Convert graphs to simple DiGraphs to enable networkx shortest_simple_paths
         G_simulated_simple = to_simple_digraph(G_simulated)
         G_base_simple = to_simple_digraph(self.G)
+        print("[DEBUG] graph_service.py: Conversions to simple DiGraph complete")
 
+        print("[DEBUG] graph_service.py: Calculating shortest simple paths (list conversion of generator)")
+        print("[DEBUG] graph_service.py: Requesting only first 3 paths")
         # Calculate k-shortest paths (Hydraulic Flow splitting) with bulletproof fallbacks
         paths = []
         try:
-            paths = list(nx.shortest_simple_paths(G_simulated_simple, orig, dest, weight="length"))[:3]
+            paths = list(
+                islice(
+                        nx.shortest_simple_paths(
+                            G_simulated_simple,
+                            orig,
+                            dest,
+                            weight="length"
+                        ),
+                        3
+                    )
+                )
+            print(f"[Aegis Graph] Shortest paths computed. Count: {len(paths)}")
             print(f"[Aegis Graph] Shortest paths computed on G_simulated. Count: {len(paths)}")
         except (nx.NetworkXNoPath, nx.NodeNotFound, nx.NetworkXError, IndexError) as e:
             print(f"[Aegis Graph] Severed path unavailable ({e}). Falling back to unsevered base graph.")
             try:
                 # Recalculate using original unsevered graph
-                paths = list(nx.shortest_simple_paths(G_base_simple, orig, dest, weight="length"))[:3]
+                paths = list(
+                        islice(
+                            nx.shortest_simple_paths(
+                                G_base_simple,
+                                orig,
+                                dest,
+                                weight="length"
+                            ),
+        3
+    )
+)                
                 print(f"[Aegis Graph] Fallback paths computed on unsevered G. Count: {len(paths)}")
             except Exception as e2:
                 print(f"[Aegis Graph] Base network routing failure: {e2}. Generating direct straight line fallback.")

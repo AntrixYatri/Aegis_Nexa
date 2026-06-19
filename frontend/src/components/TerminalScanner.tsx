@@ -30,7 +30,7 @@ export default function TerminalScanner() {
   }, []);
 
   return (
-    <div className="relative w-full h-48 overflow-hidden bg-black border-[1px] border-gray-800 p-4 font-mono text-[10px] sm:text-xs rounded-none">
+    <div className="relative w-full h-48 bg-black border-[1px] border-gray-800 p-4 font-mono text-[10px] sm:text-xs rounded-none">
       {/* Hardware-Accelerated CSS Scan Line Overlay */}
       <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] z-10 opacity-40 mix-blend-overlay"></div>
       <div className="absolute top-0 left-0 w-full h-1 bg-cyan-400/50 blur-[2px] animate-[scan_2s_linear_infinite] z-20"></div>
@@ -46,8 +46,8 @@ export default function TerminalScanner() {
             &gt; {line}
           </motion.div>
         ))}
-        <motion.div 
-          animate={{ opacity: [1, 0] }} 
+        <motion.div
+          animate={{ opacity: [1, 0] }}
           transition={{ repeat: Infinity, duration: 0.8 }}
           className="inline-block w-2 h-3 bg-cyan-500 mt-1"
         />

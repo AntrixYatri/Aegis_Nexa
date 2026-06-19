@@ -10,12 +10,15 @@ class IntelligenceService:
         Connects directly to the Gemini API to produce dynamic, dual-language 
         Standard Operating Procedures for the Bengaluru Traffic Police.
         """
+        print("[DEBUG] llm_service.py: Entering generate_dispatch_orders")
         # Initialize client - automatically looks for GEMINI_API_KEY in your .env file
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
+            print("[DEBUG] llm_service.py: GEMINI_API_KEY is missing. Falling back to local rules.")
             # Safe local fallback if your API key isn't set up yet during the hackathon
             return IntelligenceService._get_fallback_orders(event_type, severity)
             
+        print("[DEBUG] llm_service.py: Creating genai Client")
         client = genai.Client(api_key=api_key)
         
         prompt = f"""
@@ -34,6 +37,8 @@ class IntelligenceService:
         """
         
         try:
+            print("[DEBUG] llm_service.py: Calling client.models.generate_content")
+            print("generating response\n")
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt,
@@ -41,6 +46,8 @@ class IntelligenceService:
                     response_mime_type="application/json"
                 )
             )
+            print("done\n")
+            print("[DEBUG] llm_service.py: generate_content succeeded")
             
             # Parse the structured JSON response from the model string
             import json

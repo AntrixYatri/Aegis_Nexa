@@ -46,6 +46,15 @@ export default function CommandCenter() {
   const [activeIncidentsList, setActiveIncidentsList] = useState<Incident[]>([]);
   const [expandedIncidentId, setExpandedIncidentId] = useState<string | null>(null);
 
+  const [showHistoricalRisk, setShowHistoricalRisk] = useState(false);
+  const [vulnerabilityData, setVulnerabilityData] = useState<{
+    hotspots: any[];
+    summary: { total_incidents: number; high_risk_locations: number };
+  }>({
+    hotspots: [],
+    summary: { total_incidents: 0, high_risk_locations: 0 }
+  });
+
   // Custom Incident Creation forms
   const [customForm, setCustomForm] = useState<Incident>({
     event_type: 'Protest',
@@ -103,6 +112,23 @@ export default function CommandCenter() {
       clearInterval(timeInterval);
       clearInterval(latencyInterval);
     };
+  }, []);
+
+  // Fetch historical vulnerability mapping data on mount
+  useEffect(() => {
+    fetch('http://localhost:8000/api/v1/historical-risk-map')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        setVulnerabilityData(data);
+        pushLog(`[SUCCESS] Aggregated Astram datasets loaded. Total incidents: ${data.summary.total_incidents}.`, 'success');
+      })
+      .catch((err) => {
+        console.error("Vulnerability fetch error:", err);
+        pushLog(`[WARN] Failed to load vulnerability index: ${err.message}`, 'warn');
+      });
   }, []);
 
   // Run simulation & predictions
@@ -408,7 +434,7 @@ export default function CommandCenter() {
       <main className="w-full flex flex-col lg:flex-row gap-4 p-4 min-h-0 flex-1">
 
         {/* Column 1: Incident Controls (Left) - occupies 20% width */}
-        <section className="w-full lg:w-[20%] flex flex-col shrink-0 select-text">
+        <section className="w-full lg:w-[20%] flex flex-col shrink-0 select-text gap-4">
           <TacticalHudCard
             title="INCIDENT CONTROLS"
             subtitle="SCENARIO BUILDER"
@@ -540,6 +566,97 @@ export default function CommandCenter() {
               </div>
             )}
           </TacticalHudCard>
+
+          {/* Historical Vulnerability Card */}
+          <TacticalHudCard 
+            title="HISTORICAL RISK INDEX" 
+            subtitle="ASTRAM DATASETS" 
+            statusColor="primary" 
+            cornerIndicator="OP//HIST"
+          >
+            {/* Heatmap Toggle */}
+            <div className="flex justify-between items-center border-b border-slate-900 pb-2 mb-2">
+              <span className="text-slate-500 font-bold uppercase tracking-wider text-[8px]">// HEATMAP OVERLAY</span>
+              <button
+                onClick={() => {
+                  setShowHistoricalRisk(prev => !prev);
+                  pushLog(`[COMMAND] HISTORICAL HEATMAP OVERLAY ${!showHistoricalRisk ? 'ENABLED' : 'DISABLED'}`, 'info');
+                }}
+                className={`px-2 py-0.5 border text-[8px] font-bold transition-all duration-150 uppercase tracking-widest rounded-none ${
+                  showHistoricalRisk
+                    ? 'border-[#00e5ff] bg-cyan-950/20 text-[#00e5ff]'
+                    : 'border-slate-800 bg-black text-slate-500 hover:border-slate-600 hover:text-slate-200'
+                }`}
+              >
+                {showHistoricalRisk ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {/* Summary Metrics */}
+            <div className="grid grid-cols-2 gap-2 text-[9px] mb-2 bg-black/40 border border-slate-900 p-2 uppercase">
+              <div className="flex flex-col justify-between">
+                <span className="text-slate-500 block mb-0.5">TOTAL INCIDENTS:</span>
+                <span className="text-slate-200 font-bold text-xs">{vulnerabilityData.summary.total_incidents.toLocaleString()}</span>
+              </div>
+              <div className="flex flex-col justify-between">
+                <span className="text-slate-500 block mb-0.5">HIGH RISK BINS:</span>
+                <span className="text-yellow-500 font-bold text-xs">{vulnerabilityData.summary.high_risk_locations}</span>
+              </div>
+            </div>
+
+            {/* Top 5 Hotspots */}
+            <div className="space-y-1.5">
+              <span className="text-[9px] uppercase font-bold text-[#00e5ff] tracking-wider block mb-1">
+                // TOP 5 VULNERABLE LOCATIONS
+              </span>
+              {vulnerabilityData.hotspots.length === 0 ? (
+                <div className="text-[9px] text-slate-600 text-center py-4 uppercase">
+                  Awaiting database connection...
+                </div>
+              ) : (
+                vulnerabilityData.hotspots.slice(0, 5).map((hs, idx) => {
+                  let levelColor = 'border-slate-800 text-slate-500 bg-slate-950/50';
+                  if (hs.risk_level === 'critical') levelColor = 'border-red-500/50 text-red-400 bg-red-950/20';
+                  else if (hs.risk_level === 'high') levelColor = 'border-orange-500/50 text-orange-400 bg-orange-950/20';
+                  else if (hs.risk_level === 'moderate') levelColor = 'border-yellow-500/50 text-yellow-400 bg-yellow-950/20';
+                  else if (hs.risk_level === 'low') levelColor = 'border-cyan-500/50 text-cyan-400 bg-cyan-950/20';
+
+                  return (
+                    <div 
+                      key={hs.hotspot_id} 
+                      onClick={() => {
+                        const mockInc = {
+                          id: hs.hotspot_id,
+                          event_type: `Historical Hotspot (${hs.risk_level.toUpperCase()})`,
+                          latitude: hs.latitude,
+                          longitude: hs.longitude,
+                          severity: Math.round(hs.risk_score / 10) || 5,
+                          crowd_size: hs.incident_count * 100,
+                          duration: 120
+                        };
+                        setActiveIncident(mockInc);
+                        pushLog(`[INFO] Focussing map viewport on Historical Hotspot ${hs.hotspot_id}: ${hs.name}`, 'info');
+                      }}
+                      className="flex items-center justify-between border border-slate-900 hover:border-slate-700 bg-black/40 p-2 cursor-pointer transition-colors duration-150 text-[10px]"
+                    >
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-slate-500 font-bold text-[8px]">{idx + 1}.</span>
+                          <span className="text-slate-300 font-bold truncate block">{hs.name}</span>
+                        </div>
+                        <span className="text-[8px] text-slate-500 font-mono block mt-0.5">
+                          COORD: {hs.latitude.toFixed(3)}, {hs.longitude.toFixed(3)} | COUNT: {hs.incident_count}
+                        </span>
+                      </div>
+                      <div className={`px-2 py-0.5 border text-[8px] font-bold uppercase rounded-none tracking-widest shrink-0 text-center min-w-[70px] ${levelColor}`}>
+                        {hs.risk_level}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </TacticalHudCard>
         </section>
 
         {/* Column 2: Map Area (Middle) - occupies 60% width */}
@@ -549,6 +666,8 @@ export default function CommandCenter() {
             activeIncident={activeIncident}
             simulationResult={simulationResult}
             onLogMessage={pushLog}
+            showHistoricalRisk={showHistoricalRisk}
+            historicalRiskData={vulnerabilityData.hotspots}
           />
           <div className="absolute inset-0 pointer-events-none hud-scanline opacity-[0.15] z-20" />
         </section>
