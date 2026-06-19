@@ -3,6 +3,7 @@ import DeckGL from '@deck.gl/react';
 import Map from 'react-map-gl/maplibre';
 import maplibregl from 'maplibre-gl';
 import { ScatterplotLayer, PolygonLayer, PathLayer } from '@deck.gl/layers';
+import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import { FlyToInterpolator } from '@deck.gl/core';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { createHistoricalRiskLayer } from './HistoricalRiskLayer';
@@ -226,11 +227,104 @@ export default function MapContainer({
   if (activeIncident && activeIncident.latitude && activeIncident.longitude) {
     const lng = activeIncident.longitude;
     const lat = activeIncident.latitude;
+    const severity = activeIncident.severity || 5;
+
+    let nodesData: any[] = [];
+    let criticalNodes: any[] = [];
+    let propagationEdges: any[] = [];
+
+    if (simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0 && timelineStage >= 1) {
+      try {
+        const sortedNodes = [...simulationResult.impacted_nodes].sort((a: any, b: any) => {
+          const distA = (a.latitude - lat) ** 2 + (a.longitude - lng) ** 2;
+          const distB = (b.latitude - lat) ** 2 + (b.longitude - lng) ** 2;
+          return distA - distB;
+        });
+
+        let visibleNodes: any[] = [];
+        if (timelineStage === 1) {
+          visibleNodes = sortedNodes.slice(0, 1);
+        } else if (timelineStage === 2) {
+          visibleNodes = sortedNodes.slice(0, Math.max(1, Math.ceil(sortedNodes.length * 0.35)));
+        } else if (timelineStage === 3) {
+          visibleNodes = sortedNodes.slice(0, Math.max(1, Math.ceil(sortedNodes.length * 0.70)));
+        } else {
+          visibleNodes = sortedNodes;
+        }
+
+        nodesData = visibleNodes.map((node: any, idx: number) => {
+          const nodeLat = node.latitude;
+          const nodeLng = node.longitude;
+          const riskScore = node.risk_score || 50;
+          return {
+            id: idx,
+            position: [nodeLng, nodeLat],
+            riskScore: riskScore
+          };
+        }).filter((n: any) => !isNaN(n.position[0]) && !isNaN(n.position[1]));
+
+        // Sort by centrality: higher risk score first, closer to epicenter first
+        criticalNodes = nodesData
+          .map((node: any) => {
+            const dist = Math.sqrt((node.position[1] - lat) ** 2 + (node.position[0] - lng) ** 2);
+            const centralityScore = node.riskScore * 1.5 - dist * 1000;
+            return {
+              ...node,
+              centralityScore,
+              dist
+            };
+          })
+          .sort((a: any, b: any) => b.centralityScore - a.centralityScore)
+          .slice(0, 35)
+          .map((node: any, rank: number) => ({
+            ...node,
+            rank
+          }));
+
+        // Compute edges between critical nodes
+        criticalNodes.forEach((nodeA: any, i: number) => {
+          const neighbors = criticalNodes
+            .map((nodeB: any, j: number) => ({
+              idx: j,
+              node: nodeB,
+              dist: (nodeA.position[1] - nodeB.position[1]) ** 2 + (nodeA.position[0] - nodeB.position[0]) ** 2
+            }))
+            .filter(item => item.idx !== i)
+            .sort((a: any, b: any) => a.dist - b.dist)
+            .slice(0, 2);
+          
+          neighbors.forEach(neighbor => {
+            propagationEdges.push({
+              from: nodeA.position,
+              to: neighbor.node.position,
+            });
+          });
+        });
+      } catch (err) {
+        console.warn("Spatiotemporal nodes pre-calculation error:", err);
+      }
+    }
+
+    // Heatmap Layer (renders at zoom < 14.5)
+    if (viewState.zoom < 14.5 && nodesData.length > 0) {
+      layers.push(
+        new HeatmapLayer({
+          id: 'st-gnn-heatmap',
+          data: nodesData,
+          getPosition: (d: any) => d.position,
+          getWeight: (d: any) => d.riskScore,
+          radiusPixels: 45,
+          intensity: 1.5,
+          threshold: 0.05,
+          pickable: false,
+        })
+      );
+    }
 
     const incidentData = {
       latitude: lat,
       longitude: lng,
-      severity: activeIncident.severity,
+      severity: severity,
     };
 
     // Feature 1: Pulsing incident marker (Red core, Cyan outer pulsing ring)
@@ -405,93 +499,92 @@ export default function MapContainer({
       );
     }
 
-    // Feature 4: ST-GNN Node Visualization (Blinking node indicators on affected intersections)
+    // Feature 4: ST-GNN Node Visualization (Heatmap at low zoom, Critical node markers and network edges at high zoom)
     try {
       if (simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0 && timelineStage >= 1) {
-        // Sort nodes by distance from the epicenter for smooth outward propagation wave animation
-        const sortedNodes = [...simulationResult.impacted_nodes].sort((a: any, b: any) => {
-          const distA = (a.latitude - lat) ** 2 + (a.longitude - lng) ** 2;
-          const distB = (b.latitude - lat) ** 2 + (b.longitude - lng) ** 2;
-          return distA - distB;
-        });
-
-        // Slice data based on causal timeline stage
-        let visibleNodes: any[] = [];
-        if (timelineStage === 1) {
-          visibleNodes = sortedNodes.slice(0, 1);
-        } else if (timelineStage === 2) {
-          visibleNodes = sortedNodes.slice(0, Math.max(1, Math.ceil(sortedNodes.length * 0.35)));
-        } else if (timelineStage === 3) {
-          visibleNodes = sortedNodes.slice(0, Math.max(1, Math.ceil(sortedNodes.length * 0.70)));
-        } else {
-          visibleNodes = sortedNodes;
+        
+        // 1. Propagation Network Edges (PathLayer) - renders when zoomed in >= 13.5
+        if (viewState.zoom >= 13.5 && propagationEdges.length > 0) {
+          layers.push(
+            new PathLayer({
+              id: 'st-gnn-propagation-edges',
+              data: propagationEdges,
+              getPath: (d: any) => [d.from, d.to],
+              getColor: [255, 59, 59, 45], // Faint red lines (opacity 45)
+              getWidth: 1.5,
+              widthMinPixels: 1,
+              pickable: false,
+            })
+          );
         }
 
-        const nodesData = visibleNodes.map((node: any, idx: number) => {
-          const nodeLat = node.latitude;
-          const nodeLng = node.longitude;
-          const riskScore = node.risk_score || 50;
-          return {
-            id: idx,
-            position: [nodeLng, nodeLat],
-            riskScore: riskScore
-          };
-        }).filter((n: any) => !isNaN(n.position[0]) && !isNaN(n.position[1]));
+        // 2. Critical Node Markers (ScatterplotLayer) - renders when zoomed in >= 13.5
+        if (viewState.zoom >= 13.5 && criticalNodes.length > 0) {
+          layers.push(
+            new ScatterplotLayer({
+              id: 'st-gnn-impacted-nodes',
+              data: criticalNodes,
+              getPosition: (d: any) => d.position,
+              getRadius: (d: any) => {
+                const style = getSeverityStyle(d.riskScore, pulseRadius);
+                // Scale radius by centrality rank: most critical is 1.25x, scaling down to 0.8x
+                const rankFactor = 1.25 - (d.rank / 35.0) * 0.45;
+                return style.radius * style.pulse * rankFactor;
+              },
+              radiusUnits: 'pixels',
+              radiusMinPixels: 3.5,
+              radiusMaxPixels: 18,
+              getFillColor: (d: any) => {
+                const style = getSeverityStyle(d.riskScore, pulseRadius);
+                // Opacity scales by rank (most critical node has 100% of baseAlpha, scaling down to 40% for rank 35)
+                const rankOpacityFactor = 1.0 - (d.rank / 35.0) * 0.6;
+                const baseAlpha = networkMode === 'mitigated' ? 75 : 200;
+                
+                // If it is critical and unmitigated, add standard blinking pulse to alpha
+                const alpha = d.riskScore >= 85 && networkMode === 'current'
+                  ? (Math.sin(pulseRadius * 0.3) > 0 ? 245 : 90)
+                  : baseAlpha;
+                
+                return style.color.concat([Math.round(alpha * rankOpacityFactor)]);
+              },
+              stroked: true,
+              getLineColor: (d: any) => {
+                const style = getSeverityStyle(d.riskScore, pulseRadius);
+                const rankOpacityFactor = 1.0 - (d.rank / 35.0) * 0.6;
+                return style.color.concat([Math.round(255 * rankOpacityFactor)]);
+              },
+              getLineWidth: 1.5,
+              pickable: true,
+            })
+          );
 
-        layers.push(
-          new ScatterplotLayer({
-            id: 'st-gnn-impacted-nodes',
-            data: nodesData,
-            getPosition: (d: any) => d.position,
-            getRadius: (d: any) => {
-              const style = getSeverityStyle(d.riskScore, pulseRadius);
-              return style.radius * style.pulse;
-            },
-            radiusUnits: 'pixels',
-            radiusMinPixels: 3,
-            radiusMaxPixels: 15,
-            getFillColor: (d: any) => {
-              const style = getSeverityStyle(d.riskScore, pulseRadius);
-              const baseAlpha = networkMode === 'mitigated' ? 70 : 200;
-              const alpha = d.riskScore >= 85 && networkMode === 'current'
-                ? (Math.sin(pulseRadius * 0.3) > 0 ? 245 : 90)
-                : baseAlpha;
-              return style.color.concat([alpha]);
-            },
-            stroked: true,
-            getLineColor: (d: any) => {
-              const style = getSeverityStyle(d.riskScore, pulseRadius);
-              return style.color.concat([255]);
-            },
-            getLineWidth: 1.5,
-            pickable: true,
-          })
-        );
- 
-        // ST-GNN Node secondary halo overlay
-        layers.push(
-          new ScatterplotLayer({
-            id: 'st-gnn-impacted-nodes-overlay',
-            data: visibleNodes,
-            getPosition: (d: any) => [d.longitude, d.latitude],
-            getRadius: (d: any) => {
-              const style = getSeverityStyle(d.risk_score || 50, pulseRadius);
-              return style.radius * 2.2;
-            },
-            radiusUnits: 'pixels',
-            radiusMinPixels: 5,
-            radiusMaxPixels: 28,
-            getFillColor: (d: any) => {
-              const style = getSeverityStyle(d.risk_score || 50, pulseRadius);
-              const baseAlpha = networkMode === 'mitigated' ? 15 : 40;
-              const alpha = Math.round(baseAlpha + Math.sin(pulseRadius * 0.2) * 10);
-              return style.color.concat([alpha]);
-            },
-            stroked: false,
-            filled: true,
-            pickable: false,
-          })
-        );
+          // 3. Critical Node Halo Overlay - renders when zoomed in >= 13.5
+          layers.push(
+            new ScatterplotLayer({
+              id: 'st-gnn-impacted-nodes-overlay',
+              data: criticalNodes,
+              getPosition: (d: any) => d.position,
+              getRadius: (d: any) => {
+                const style = getSeverityStyle(d.riskScore, pulseRadius);
+                const rankFactor = 1.25 - (d.rank / 35.0) * 0.45;
+                return style.radius * 2.2 * rankFactor;
+              },
+              radiusUnits: 'pixels',
+              radiusMinPixels: 5,
+              radiusMaxPixels: 32,
+              getFillColor: (d: any) => {
+                const style = getSeverityStyle(d.riskScore, pulseRadius);
+                const rankOpacityFactor = 1.0 - (d.rank / 35.0) * 0.6;
+                const baseAlpha = networkMode === 'mitigated' ? 15 : 40;
+                const alpha = Math.round(baseAlpha + Math.sin(pulseRadius * 0.2) * 10);
+                return style.color.concat([Math.round(alpha * rankOpacityFactor)]);
+              },
+              stroked: false,
+              filled: true,
+              pickable: false,
+            })
+          );
+        }
       }
     } catch (err: any) {
       console.warn("Cordon zone impacted nodes mapping failed:", err);
