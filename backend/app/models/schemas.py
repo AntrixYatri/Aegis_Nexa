@@ -46,6 +46,20 @@ class SpatiotemporalMetrics(BaseModel):
     congestion_trend: List[int]
     efficiency_trend: List[int]
 
+class CongestedCorridor(BaseModel):
+    coordinates: List[List[float]]
+    risk_score: float
+
+class MitigationCorridor(BaseModel):
+    coordinates: List[List[float]]
+    flow_allocation_percentage: float
+    flow_delta: float
+
+class RecoveryCorridor(BaseModel):
+    coordinates: List[List[float]]
+    risk_score: float
+    flow_delta: float
+
 # ---------------------------------------------------------
 # ENGINEER 1's ROUTING OUTPUT / API RESPONSES
 # ---------------------------------------------------------
@@ -54,6 +68,9 @@ class EventSimulationResponse(BaseModel):
     blast_radius_meters: float
     impacted_nodes: List[ImpactedNode]
     detour_geometry: List[DetourRoute]
+    congested_corridors: List[CongestedCorridor] = []
+    mitigation_corridors: List[MitigationCorridor] = []
+    recovery_corridors: List[RecoveryCorridor] = []
     historical_analytics: HistoricalAnalytics
     metrics: SpatiotemporalMetrics
 

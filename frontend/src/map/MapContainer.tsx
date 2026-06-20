@@ -8,6 +8,14 @@ import { FlyToInterpolator } from '@deck.gl/core';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { createHistoricalRiskLayer } from './HistoricalRiskLayer';
 
+// Define DEBUG_MODE flag (can be toggled via window.DEBUG_MODE in browser console for development)
+const getDebugMode = (): boolean => {
+  if (typeof window !== 'undefined') {
+    return (window as any).DEBUG_MODE === true;
+  }
+  return false;
+};
+
 interface MapContainerProps {
   simulationPhase: 1 | 2 | 3 | 4;
   activeIncident: any;
@@ -175,6 +183,7 @@ export default function MapContainer({
   timelineStage,
   networkMode
 }: MapContainerProps) {
+  const SHOW_VEHICLES = false;
   const [viewState, setViewState] = useState({
     longitude: 77.5946,
     latitude: 12.9716,
@@ -305,8 +314,8 @@ export default function MapContainer({
       }
     }
 
-    // Heatmap Layer (renders at zoom < 14.5)
-    if (viewState.zoom < 14.5 && nodesData.length > 0) {
+    // Heatmap Layer (renders at zoom < 14.5 under DEBUG_MODE)
+    if (getDebugMode() && viewState.zoom < 14.5 && nodesData.length > 0) {
       layers.push(
         new HeatmapLayer({
           id: 'st-gnn-heatmap',
@@ -336,28 +345,30 @@ export default function MapContainer({
         getPosition: (d: any) => [d.longitude, d.latitude],
         getRadius: 3.5,
         radiusUnits: 'pixels',
-        getFillColor: [255, 59, 59, 255],
+        getFillColor: networkMode === 'mitigated' ? [180, 50, 50, 80] : [255, 59, 59, 255],
         pickable: false,
       })
     );
 
-    // Cyan outer pulsing thin ring (stroked outline only, no fill)
-    layers.push(
-      new ScatterplotLayer({
-        id: 'incident-pulse-outer',
-        data: [incidentData],
-        getPosition: (d: any) => [d.longitude, d.latitude],
-        getRadius: 1,
-        radiusUnits: 'pixels',
-        radiusScale: 8 + pulseRadius * 0.3, // size ranges from 8 to 38px
-        stroked: true,
-        filled: false,
-        getLineColor: [0, 229, 255, Math.floor(200 * (1 - pulseRadius / 100))],
-        getLineWidth: 1,
-        lineWidthMinPixels: 1,
-        pickable: false,
-      })
-    );
+    if (networkMode !== 'mitigated') {
+      // Cyan outer pulsing thin ring (stroked outline only, no fill)
+      layers.push(
+        new ScatterplotLayer({
+          id: 'incident-pulse-outer',
+          data: [incidentData],
+          getPosition: (d: any) => [d.longitude, d.latitude],
+          getRadius: 1,
+          radiusUnits: 'pixels',
+          radiusScale: 8 + pulseRadius * 0.3, // size ranges from 8 to 38px
+          stroked: true,
+          filled: false,
+          getLineColor: [0, 229, 255, Math.floor(200 * (1 - pulseRadius / 100))],
+          getLineWidth: 1,
+          lineWidthMinPixels: 1,
+          pickable: false,
+        })
+      );
+    }
 
     // Severity Node Hierarchy style helper
     const getSeverityStyle = (riskScore: number, pulseRad: number) => {
@@ -408,7 +419,7 @@ export default function MapContainer({
 
     // Feature 3: Concentric Layered Containment Zones (Red -> Amber -> Green)
     // Upgraded to organic topology-driven polygons wrapping the active threat nodes
-    if (simulationResult && simulationResult.blast_radius_meters && timelineStage >= 3) {
+    if (networkMode === 'current' && simulationResult && simulationResult.blast_radius_meters && timelineStage >= 3) {
       const baseRadius = simulationResult.blast_radius_meters;
       const nodes = simulationResult.impacted_nodes || [];
 
@@ -464,7 +475,7 @@ export default function MapContainer({
     }
 
     // Phase 1 Quarantine containment perimeter (visible when phase >= 2 and timelineStage >= 3)
-    if (simulationPhase >= 2 && simulationResult && simulationResult.blast_radius_meters && timelineStage >= 3) {
+    if (networkMode === 'current' && simulationPhase >= 2 && simulationResult && simulationResult.blast_radius_meters && timelineStage >= 3) {
       const perimeterRadius = simulationResult.blast_radius_meters * 1.25;
       const staticPolygon = getOrganicPerimeter(lng, lat, simulationResult.impacted_nodes || [], perimeterRadius);
 
@@ -500,8 +511,9 @@ export default function MapContainer({
     }
 
     // Feature 4: ST-GNN Node Visualization (Heatmap at low zoom, Critical node markers and network edges at high zoom)
+    // Renders nodes and network propagation lines ONLY in DEBUG_MODE (Goal 2: Remove Full Node Visualization)
     try {
-      if (simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0 && timelineStage >= 1) {
+      if (getDebugMode() && simulationResult && simulationResult.impacted_nodes && simulationResult.impacted_nodes.length > 0 && timelineStage >= 1) {
         
         // 1. Propagation Network Edges (PathLayer) - renders when zoomed in >= 13.5
         if (viewState.zoom >= 13.5 && propagationEdges.length > 0) {
@@ -593,152 +605,278 @@ export default function MapContainer({
       }
     }
 
-    // Feature 1: Dynamic Diversion Corridors (Alternative paths loop with BPR flow allocation)
+    // Feature 5: Congested and impacted road corridors (Goal 3: Incident-Centric / Goal 1: Road-Following Route Rendering)
+    if (simulationResult && simulationResult.congested_corridors && simulationResult.congested_corridors.length > 0) {
+      if (networkMode === 'mitigated') {
+        layers.push(
+          new PathLayer({
+            id: 'original-impacted-corridors-thin',
+            data: simulationResult.congested_corridors,
+            getPath: (d: any) => d.coordinates,
+            getColor: [255, 30, 30, 90],
+            getWidth: 1.5,
+            widthMinPixels: 1.5,
+            pickable: false,
+          })
+        );
+      } else {
+        // 1. Glow Layer (wide, low opacity, pulsing)
+        layers.push(
+          new PathLayer({
+            id: 'congested-corridors-glow',
+            data: simulationResult.congested_corridors,
+            getPath: (d: any) => d.coordinates,
+            getColor: (d: any) => {
+              const score = d.risk_score || 50;
+              let color = [0, 229, 255]; // default cyan
+              if (score >= 100) color = [255, 30, 30]; // Red
+              else if (score >= 80) color = [255, 90, 0]; // Orange-red
+              else if (score >= 60) color = [255, 150, 0]; // Orange
+              else if (score >= 35) color = [255, 215, 0]; // Yellow
+              
+              // Add subtle pulsing effect to the glow opacity
+              const opacity = Math.round(35 + Math.sin(pulseRadius * 0.15) * 12);
+              return color.concat([opacity]);
+            },
+            getWidth: (d: any) => {
+              const score = d.risk_score || 50;
+              if (score >= 100) return 11.0;
+              if (score >= 80) return 9.0;
+              if (score >= 60) return 7.0;
+              if (score >= 35) return 5.0;
+              return 3.6;
+            },
+            widthMinPixels: 2,
+            pickable: false,
+          })
+        );
+
+        // 2. Core Layer (narrow, high opacity)
+        layers.push(
+          new PathLayer({
+            id: 'congested-corridors-core',
+            data: simulationResult.congested_corridors,
+            getPath: (d: any) => d.coordinates,
+            getColor: (d: any) => {
+              const score = d.risk_score || 50;
+              let color = [0, 229, 255];
+              if (score >= 100) color = [255, 30, 30];
+              else if (score >= 80) color = [255, 90, 0];
+              else if (score >= 60) color = [255, 150, 0];
+              else if (score >= 35) color = [255, 215, 0];
+              
+              return color.concat([210]); // solid core opacity
+            },
+            getWidth: (d: any) => {
+              const score = d.risk_score || 50;
+              if (score >= 100) return 5.5;
+              if (score >= 80) return 4.5;
+              if (score >= 60) return 3.5;
+              if (score >= 35) return 2.5;
+              return 1.8;
+            },
+            widthMinPixels: 1,
+            pickable: true,
+          })
+        );
+      }
+    }
+
+    // Feature 1: Mitigation Corridors (Cyan = redistributed traffic) & Recovery Corridors (Green = congestion relief)
     try {
-      if (networkMode === 'mitigated' && simulationPhase >= 3 && simulationResult && simulationResult.detour_geometry && simulationResult.detour_geometry.length > 0 && timelineStage >= 5) {
-        simulationResult.detour_geometry.forEach((route: any, idx: number) => {
-          const flow = route.flow_allocation_percentage || 30;
-          const coords = route.coordinates;
-
-          if (!coords || coords.length < 2) return;
-
-          // Opacity and color based on allocation visual hierarchy
-          const opacity = Math.round(130 + (flow / 100) * 125); // 50% => 192, 20% => 155
-          let strokeColor = [0, 229, 255, opacity]; // Default cyan
-          if (route.route_index === 1) {
-            strokeColor = [16, 185, 129, opacity]; // Emerald green diversion corridor
-          } else if (route.route_index === 2) {
-            strokeColor = [245, 158, 11, opacity]; // Amber mitigation route
-          }
-
-          // Rerouting Widths: Primary = 8.5px, Secondary = 5.5px, Tertiary = 3.5px
-          let pathWidth = 3.5;
-          if (route.route_index === 0) {
-            pathWidth = 8.5;
-          } else if (route.route_index === 1) {
-            pathWidth = 5.5;
-          }
-
-          // 1. Glow Under-Layer (strong glowing aura)
+      if (networkMode === 'mitigated' && simulationPhase >= 3 && simulationResult && timelineStage >= 5) {
+        if (simulationResult.mitigation_corridors && simulationResult.mitigation_corridors.length > 0) {
+          // 1. Glow Layer (wide, low opacity, pulsing)
           layers.push(
             new PathLayer({
-              id: `detour-path-glow-${route.route_index}-${idx}`,
-              data: [route],
+              id: 'mitigation-corridors-glow',
+              data: simulationResult.mitigation_corridors,
               getPath: (d: any) => d.coordinates,
-              getColor: strokeColor.slice(0, 3).concat([Math.round(40 + Math.sin(pulseRadius * 0.15) * 15)]),
-              getWidth: pathWidth * 1.8 + Math.sin(pulseRadius * 0.1) * 1.2,
-              widthMinPixels: 4,
+              getColor: [0, 229, 255, Math.round(40 + Math.sin(pulseRadius * 0.15) * 15)],
+              getWidth: (d: any) => {
+                const pct = d.flow_allocation_percentage || 50;
+                return (2.0 + (pct / 100.0) * 6.0) * 1.8;
+              },
+              widthMinPixels: 3.5,
               pickable: false,
             })
           );
 
-          // 2. Core Over-Layer (crisp neon core)
+          // 2. Core Layer (narrow, high opacity)
           layers.push(
             new PathLayer({
-              id: `detour-path-core-${route.route_index}-${idx}`,
-              data: [route],
+              id: 'mitigation-corridors-core',
+              data: simulationResult.mitigation_corridors,
               getPath: (d: any) => d.coordinates,
-              getColor: strokeColor.slice(0, 3).concat([240]),
-              getWidth: pathWidth,
-              widthMinPixels: 2.5,
+              getColor: [0, 229, 255, 230],
+              getWidth: (d: any) => {
+                const pct = d.flow_allocation_percentage || 50;
+                return 2.0 + (pct / 100.0) * 6.0;
+              },
+              widthMinPixels: 2.0,
               pickable: true,
             })
           );
+        }
 
-          // Render moving vehicle indicators ONLY at stage 6
-          if (timelineStage >= 6) {
-            // Map route index to traffic_condition string for speed multipliers
-            let trafficCondition = 'normal';
-            if (route.route_index === 0) {
-              trafficCondition = 'congested';
-            } else if (route.route_index === 2) {
-              trafficCondition = 'free-flow';
+        // Feature: Route-Level Rerouting Visualization (Routes A, B, C with 50%/30%/20% allocation)
+        if (simulationResult.detour_geometry && simulationResult.detour_geometry.length > 0) {
+          // Define route styling: distinct colors and widths for clear visual hierarchy
+          const routeStyles = [
+            { // Route A (index 0, 50% allocation)
+              id_prefix: 'route-a',
+              color_glow: [0, 229, 255],     // Bright cyan
+              color_core: [0, 229, 255],
+              width_core: 8.0,               // Thickest (50%)
+              width_glow_multiplier: 1.75,
+            },
+            { // Route B (index 1, 30% allocation)
+              id_prefix: 'route-b',
+              color_glow: [0, 176, 212],     // Cyan-blue
+              color_core: [0, 176, 212],
+              width_core: 5.0,               // Medium (30%)
+              width_glow_multiplier: 1.75,
+            },
+            { // Route C (index 2, 20% allocation)
+              id_prefix: 'route-c',
+              color_glow: [102, 210, 255],   // Light cyan
+              color_core: [102, 210, 255],
+              width_core: 3.0,               // Thinnest (20%)
+              width_glow_multiplier: 1.75,
+            },
+          ];
+
+          // Render each route as glow + core layers
+          simulationResult.detour_geometry.forEach((route: any, index: number) => {
+            if (index < routeStyles.length) {
+              const style = routeStyles[index];
+              const glowWidth = style.width_core * style.width_glow_multiplier;
+
+              // Glow Layer (wide, pulsing, low opacity)
+              layers.push(
+                new PathLayer({
+                  id: `${style.id_prefix}-glow`,
+                  data: [route],
+                  getPath: (d: any) => d.coordinates,
+                  getColor: [...style.color_glow, Math.round(35 + Math.sin(pulseRadius * 0.15) * 12)],
+                  getWidth: glowWidth,
+                  widthMinPixels: 3.0,
+                  pickable: false,
+                })
+              );
+
+              // Core Layer (narrow, solid, high opacity)
+              layers.push(
+                new PathLayer({
+                  id: `${style.id_prefix}-core`,
+                  data: [route],
+                  getPath: (d: any) => d.coordinates,
+                  getColor: [...style.color_core, 230],
+                  getWidth: style.width_core,
+                  widthMinPixels: 2.0,
+                  pickable: true,
+                })
+              );
             }
+          });
+        }
 
-            const speedMultipliers: Record<string, number> = {
-              'congested': 0.25,
-              'normal': 0.6,
-              'free-flow': 1.2
-            };
+        if (simulationResult.recovery_corridors && simulationResult.recovery_corridors.length > 0) {
+          // 1. Glow Layer (wide, low opacity, pulsing)
+          layers.push(
+            new PathLayer({
+              id: 'recovery-corridors-glow',
+              data: simulationResult.recovery_corridors,
+              getPath: (d: any) => d.coordinates,
+              getColor: [16, 185, 129, Math.round(40 + Math.sin(pulseRadius * 0.15) * 15)],
+              getWidth: (d: any) => {
+                const score = d.risk_score || 50;
+                return (2.0 + (score / 100.0) * 5.0) * 1.8;
+              },
+              widthMinPixels: 3.5,
+              pickable: false,
+            })
+          );
 
-            const speedMultiplier = speedMultipliers[trafficCondition];
+          // 2. Core Layer (narrow, high opacity)
+          layers.push(
+            new PathLayer({
+              id: 'recovery-corridors-core',
+              data: simulationResult.recovery_corridors,
+              getPath: (d: any) => d.coordinates,
+              getColor: [16, 185, 129, 230],
+              getWidth: (d: any) => {
+                const score = d.risk_score || 50;
+                return 2.0 + (score / 100.0) * 5.0;
+              },
+              widthMinPixels: 2.0,
+              pickable: true,
+            })
+          );
+        }
 
-            // Traffic density vehicle indicators proportional to allocation splits
-            const numVehicles = flow >= 50 ? 10 : flow >= 30 ? 6 : 4;
-            const trailLength = 4;
-            const vehiclesData: any[] = [];
+        // Fallbacks if no corridors are generated
+        if ((!simulationResult.mitigation_corridors || simulationResult.mitigation_corridors.length === 0) &&
+            (!simulationResult.recovery_corridors || simulationResult.recovery_corridors.length === 0)) {
+          const affectedPath = [
+            [lng - 0.005, lat - 0.003],
+            [lng - 0.002, lat - 0.001],
+            [lng, lat]
+          ] as [number, number][];
 
-            for (let vIdx = 0; vIdx < numVehicles; vIdx++) {
-              const baseT = ((pulseRadius * speedMultiplier + vIdx * (100 / numVehicles)) % 100) / 100;
-              
-              for (let trailIdx = 0; trailIdx < trailLength; trailIdx++) {
-                // Calculate coordinate with time offset for the trail
-                const t = (baseT - (trailIdx * 0.015) + 1.0) % 1.0;
-                vehiclesData.push({
-                  position: getPointOnPath(coords, t),
-                  size: 4.5 - trailIdx * 0.9, // core is 4.5px, trail decays to 0.9px
-                  opacity: Math.max(0, Math.round(255 * (1 - trailIdx / trailLength))),
-                  isCore: trailIdx === 0
-                });
-              }
-            }
+          const diversionPath = [
+            [lng - 0.005, lat - 0.003],
+            [lng - 0.004, lat + 0.002],
+            [lng, lat + 0.004],
+            [lng + 0.004, lat + 0.002],
+            [lng + 0.005, lat]
+          ] as [number, number][];
 
-            layers.push(
-              new ScatterplotLayer({
-                id: `fleet-vehicles-route-${route.route_index}-${idx}`,
-                data: vehiclesData,
-                getPosition: (d: any) => d.position,
-                getRadius: (d: any) => d.size,
-                radiusUnits: 'pixels',
-                getFillColor: (d: any) => {
-                  // Core is solid bright white, trails match the route color with decaying opacity
-                  return d.isCore ? [255, 255, 255, d.opacity] : strokeColor.slice(0, 3).concat([d.opacity]);
-                },
-                stroked: false,
-                pickable: false,
-              })
-            );
-          }
-        });
-      } else if (networkMode === 'mitigated' && simulationPhase >= 3) {
-        // Safe static path fallbacks if dynamic OSMnx routing dataset fails or is pending
-        const affectedPath = [
-          [lng - 0.005, lat - 0.003],
-          [lng - 0.002, lat - 0.001],
-          [lng, lat]
-        ] as [number, number][];
+          const recoveryPath = [
+            [lng - 0.003, lat - 0.002],
+            [lng - 0.001, lat - 0.001]
+          ] as [number, number][];
 
-        const diversionPath = [
-          [lng - 0.005, lat - 0.003],
-          [lng - 0.004, lat + 0.002],
-          [lng, lat + 0.004],
-          [lng + 0.004, lat + 0.002],
-          [lng + 0.005, lat]
-        ] as [number, number][];
+          layers.push(
+            new PathLayer({
+              id: 'affected-corridor-fallback-red',
+              data: [{ path: affectedPath }],
+              getPath: (d: any) => d.path,
+              getColor: [255, 30, 30, 90],
+              getWidth: 1.5,
+              widthMinPixels: 1.5,
+              pickable: false,
+            })
+          );
 
-        layers.push(
-          new PathLayer({
-            id: 'affected-corridor-fallback',
-            data: [{ path: affectedPath }],
-            getPath: (d: any) => d.path,
-            getColor: [255, 59, 59, 200],
-            getWidth: 4,
-            widthMinPixels: 2.5,
-            pickable: false,
-          })
-        );
+          layers.push(
+            new PathLayer({
+              id: 'diversion-corridor-fallback-cyan',
+              data: [{ path: diversionPath }],
+              getPath: (d: any) => d.path,
+              getColor: [0, 229, 255, 200],
+              getWidth: 4,
+              widthMinPixels: 2.5,
+              pickable: false,
+            })
+          );
 
-        layers.push(
-          new PathLayer({
-            id: 'diversion-corridor-fallback',
-            data: [{ path: diversionPath }],
-            getPath: (d: any) => d.path,
-            getColor: [16, 185, 129, 200],
-            getWidth: 4,
-            widthMinPixels: 2.5,
-            pickable: false,
-          })
-        );
+          layers.push(
+            new PathLayer({
+              id: 'recovery-corridor-fallback-green',
+              data: [{ path: recoveryPath }],
+              getPath: (d: any) => d.path,
+              getColor: [16, 185, 129, 200],
+              getWidth: 4,
+              widthMinPixels: 2.5,
+              pickable: false,
+            })
+          );
+        }
+
+        if (SHOW_VEHICLES && timelineStage >= 6) {
+          // Vehicle animation postponed
+        }
       }
     } catch (err: any) {
       console.warn("Alternative routing paths mapping failed:", err);

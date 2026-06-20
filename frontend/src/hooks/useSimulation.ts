@@ -7,11 +7,31 @@ export interface Incident {
   severity: number;
 }
 
+export interface CongestedCorridor {
+  coordinates: [number, number][];
+  risk_score: number;
+}
+
+export interface MitigationCorridor {
+  coordinates: [number, number][];
+  flow_allocation_percentage: number;
+  flow_delta: number;
+}
+
+export interface RecoveryCorridor {
+  coordinates: [number, number][];
+  risk_score: number;
+  flow_delta: number;
+}
+
 export interface SimulationResult {
   status: string;
   blast_radius_meters: number;
-  impacted_nodes: number[];
-  detour_geometry: [number, number][]; // [lng, lat]
+  impacted_nodes: any[];
+  detour_geometry: any[];
+  congested_corridors?: CongestedCorridor[];
+  mitigation_corridors?: MitigationCorridor[];
+  recovery_corridors?: RecoveryCorridor[];
 }
 
 export interface QuarantineZone {

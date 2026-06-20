@@ -138,6 +138,9 @@ async def simulate_event(payload: EventSimulationRequest):
             "blast_radius_meters": simulation_results["blast_radius_meters"],
             "impacted_nodes": simulation_results["congested_nodes"],
             "detour_geometry": simulation_results["detour_geometry"],
+            "congested_corridors": simulation_results.get("congested_corridors", []),
+            "mitigation_corridors": simulation_results.get("mitigation_corridors", []),
+            "recovery_corridors": simulation_results.get("recovery_corridors", []),
             "historical_analytics": historical_stats,
             "metrics": simulation_results["metrics"]
         }

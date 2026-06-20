@@ -259,11 +259,74 @@ export default function CommandCenter() {
         }
       ];
 
+      // Generate mock congested corridors
+      const mockCongestedCorridors = [
+        {
+          coordinates: [
+            [incident.longitude - 0.003, incident.latitude - 0.003],
+            [incident.longitude - 0.001, incident.latitude - 0.001],
+            [incident.longitude, incident.latitude]
+          ] as [number, number][],
+          risk_score: 100
+        },
+        {
+          coordinates: [
+            [incident.longitude, incident.latitude],
+            [incident.longitude + 0.001, incident.latitude + 0.001],
+            [incident.longitude + 0.003, incident.latitude + 0.003]
+          ] as [number, number][],
+          risk_score: 85
+        },
+        {
+          coordinates: [
+            [incident.longitude - 0.002, incident.latitude + 0.002],
+            [incident.longitude, incident.latitude],
+            [incident.longitude + 0.002, incident.latitude - 0.002]
+          ] as [number, number][],
+          risk_score: 70
+        }
+      ];
+
+      // Generate mock mitigation corridors
+      const mockMitigationCorridors = [
+        {
+          coordinates: [
+            [incident.longitude + 0.001, incident.latitude + 0.001],
+            [incident.longitude + 0.003, incident.latitude + 0.002]
+          ] as [number, number][],
+          flow_allocation_percentage: 50.0,
+          flow_delta: 500.0
+        },
+        {
+          coordinates: [
+            [incident.longitude - 0.002, incident.latitude + 0.003],
+            [incident.longitude - 0.004, incident.latitude + 0.002]
+          ] as [number, number][],
+          flow_allocation_percentage: 30.0,
+          flow_delta: 300.0
+        }
+      ];
+
+      // Generate mock recovery corridors
+      const mockRecoveryCorridors = [
+        {
+          coordinates: [
+            [incident.longitude - 0.001, incident.latitude - 0.001],
+            [incident.longitude, incident.latitude]
+          ] as [number, number][],
+          risk_score: 100.0,
+          flow_delta: -1000.0
+        }
+      ];
+
       setSimulationResult({
         status: 'success',
         blast_radius_meters: mockRadius,
         impacted_nodes: mockNodes,
-        detour_geometry: mockDetours
+        detour_geometry: mockDetours,
+        congested_corridors: mockCongestedCorridors,
+        mitigation_corridors: mockMitigationCorridors,
+        recovery_corridors: mockRecoveryCorridors
       });
 
       // Local Gemini SOP Dispatch fallback
@@ -921,6 +984,56 @@ export default function CommandCenter() {
                   </div>
                 ))
               )}
+            </div>
+          </TacticalHudCard>
+
+          {/* Tactical Legend Panel */}
+          <TacticalHudCard title="TRAFFIC FLOW KEY" subtitle="NETWORK LEGEND" statusColor="primary" cornerIndicator="LEG//MAP">
+            <div className="grid grid-cols-2 gap-2 text-[8.5px] font-mono">
+              {/* Left Column */}
+              <div className="space-y-1.5">
+                {/* Incident Zone */}
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 bg-red-500 border border-red-600 shrink-0 rounded-none" />
+                  <span className="text-slate-300">INCIDENT</span>
+                </div>
+                
+                {/* Impacted Corridor */}
+                <div className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-3 bg-red-600 border border-red-700 shrink-0 rounded-none" />
+                  <span className="text-slate-300">IMPACTED</span>
+                </div>
+                
+                {/* Mitigation Flow */}
+                <div className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-3 bg-cyan-400 border border-cyan-500 shrink-0 rounded-none glow-cyan" />
+                  <span className="text-slate-300">MITIGAT.</span>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-1.5">
+                {/* Recovery Flow */}
+                <div className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-3 bg-emerald-500 border border-emerald-600 shrink-0 rounded-none" />
+                  <span className="text-slate-300">RECOVERY</span>
+                </div>
+                
+                {/* Route A */}
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-3 bg-cyan-400 border border-cyan-500 shrink-0 rounded-none" />
+                  <span className="text-slate-300">ROUTE A</span>
+                </div>
+                
+                {/* Route B & C */}
+                <div className="flex items-center gap-1.5">
+                  <div className="flex gap-0.5">
+                    <div className="h-1.5 w-2 bg-cyan-400 border border-cyan-500/70 shrink-0 rounded-none opacity-75" />
+                    <div className="h-1 w-2 bg-cyan-400 border border-cyan-500/50 shrink-0 rounded-none opacity-50" />
+                  </div>
+                  <span className="text-slate-300">ROUTE B/C</span>
+                </div>
+              </div>
             </div>
           </TacticalHudCard>
         </section>

@@ -83,7 +83,14 @@ class GraphEngine:
         
         # Pre-compute unprojected view in memory for fast GPS snapping and coordinate lookup
         self.G_unprojected = ox.project_graph(self.G, to_crs="EPSG:4326")
-        print(f"[Aegis Graph] Unified graph successfully loaded: {len(self.G.nodes)} nodes, {len(self.G.edges)} edges.")
+        self.G_unprojected_simple = to_simple_digraph(self.G_unprojected)
+        
+        # Calculate local network extent boundary box
+        lats = [data['y'] for node, data in self.G_unprojected.nodes(data=True)]
+        lngs = [data['x'] for node, data in self.G_unprojected.nodes(data=True)]
+        self.min_lat, self.max_lat = min(lats), max(lats)
+        self.min_lng, self.max_lng = min(lngs), max(lngs)
+        print(f"[Aegis Graph] Unified graph successfully loaded: {len(self.G.nodes)} nodes, {len(self.G.edges)} edges. Extent: lat {self.min_lat:.4f}-{self.max_lat:.4f}, lng {self.min_lng:.4f}-{self.max_lng:.4f}")
 
     def calculate_hydraulic_diversion(self, event_lat: float, event_lng: float, severity: int, base_volume: float = 1000.0):
         """
@@ -180,22 +187,91 @@ class GraphEngine:
                 print(f"[Aegis Graph] Base network routing failure: {e2}. Generating direct straight line fallback.")
                 paths = [[orig, dest]]
 
+        # Define local network extent boundary validator (Goal 5: Bounding Box validation)
+        def is_corridor_valid(coords) -> bool:
+            if not coords or len(coords) < 1:
+                return False
+            # Extract bounds of the corridor coordinates
+            c_lngs = [pt[0] for pt in coords]
+            c_lats = [pt[1] for pt in coords]
+            c_min_lng, c_max_lng = min(c_lngs), max(c_lngs)
+            c_min_lat, c_max_lat = min(c_lats), max(c_lats)
+            
+            # Bounding box must be strictly within local network boundaries
+            return (c_min_lng >= self.min_lng and c_max_lng <= self.max_lng and
+                    c_min_lat >= self.min_lat and c_max_lat <= self.max_lat)
+
         detour_geometry = []
         congested_nodes_output = []
         for node in blocked_nodes:
-            if node in self.G_unprojected:
-                node_data = self.G_unprojected.nodes[node]
+            if node in self.G_unprojected_simple:
+                node_data = self.G_unprojected_simple.nodes[node]
                 congested_nodes_output.append({
                     "latitude": node_data['y'],
                     "longitude": node_data['x'],
                     "risk_score": 100
                 })
 
-        # Calculate exact baseline path length on G_base_simple (meters)
+        # Collect edge-level geometries of blocked and congested road corridors (Goal 3: Incident-Centric / EPSG:4326)
+        congested_corridors_output = []
+        seen_edges = set()
+
+        # 1. Blocked corridors inside the blast radius
+        for node in blocked_nodes:
+            if node in self.G_unprojected_simple:
+                # Outgoing edges
+                for u, v, data in self.G_unprojected_simple.out_edges(node, data=True):
+                    edge_key = (u, v) if u < v else (v, u)
+                    if edge_key in seen_edges:
+                        continue
+                    seen_edges.add(edge_key)
+                    
+                    if "geometry" in data:
+                        coords = [[c[0], c[1]] for c in data["geometry"].coords]
+                    else:
+                        u_data = self.G_unprojected_simple.nodes[u]
+                        v_data = self.G_unprojected_simple.nodes[v]
+                        coords = [[u_data['x'], u_data['y']], [v_data['x'], v_data['y']]]
+                    
+                    if is_corridor_valid(coords):
+                        congested_corridors_output.append({
+                            "coordinates": coords,
+                            "risk_score": 100.0
+                        })
+                
+                # Incoming edges
+                for u, v, data in self.G_unprojected_simple.in_edges(node, data=True):
+                    edge_key = (u, v) if u < v else (v, u)
+                    if edge_key in seen_edges:
+                        continue
+                    seen_edges.add(edge_key)
+                    
+                    if "geometry" in data:
+                        coords = [[c[0], c[1]] for c in data["geometry"].coords]
+                    else:
+                        u_data = self.G_unprojected_simple.nodes[u]
+                        v_data = self.G_unprojected_simple.nodes[v]
+                        coords = [[u_data['x'], u_data['y']], [v_data['x'], v_data['y']]]
+                    
+                    if is_corridor_valid(coords):
+                        congested_corridors_output.append({
+                            "coordinates": coords,
+                            "risk_score": 100.0
+                        })
+
+        # Calculate exact baseline path and length on G_base_simple (meters) (Goal 1: Localized Route-Delta)
+        base_path = []
         try:
+            base_path = nx.shortest_path(G_base_simple, orig, dest, weight="length")
             L_base = nx.shortest_path_length(G_base_simple, orig, dest, weight="length")
         except Exception:
             L_base = get_distance_meters(orig_lat, orig_lng, dest_lat, dest_lng)
+
+        # Store baseline edges for route-delta identification
+        base_edges = set()
+        if base_path and len(base_path) > 1:
+            for u, v in zip(base_path[:-1], base_path[1:]):
+                base_edges.add((u, v))
 
         # Split traffic distribution across alternative corridors (e.g., 50%, 30%, 20%)
         flow_splits = [0.5, 0.3, 0.2]
@@ -214,8 +290,8 @@ class GraphEngine:
                     L_route += G_base_simple[u][v].get('length', 1.0)
                 else:
                     L_route += get_distance_meters(
-                        self.G_unprojected.nodes[u]['y'], self.G_unprojected.nodes[u]['x'],
-                        self.G_unprojected.nodes[v]['y'], self.G_unprojected.nodes[v]['x']
+                        self.G_unprojected_simple.nodes[u]['y'], self.G_unprojected_simple.nodes[u]['x'],
+                        self.G_unprojected_simple.nodes[v]['y'], self.G_unprojected_simple.nodes[v]['x']
                     )
             path_lengths.append(L_route)
             
@@ -224,23 +300,168 @@ class GraphEngine:
             delay_factor = 1.0 + 0.15 * ((volume / capacity) ** 4)
             bpr_factors.append(delay_factor)
             
+            # Identify the route-delta (divergence segment) by slicing from the first non-base edge to the last (Goal 1: Localized Route-Delta)
+            non_base_indices = []
+            for i, (u, v) in enumerate(zip(path[:-1], path[1:])):
+                if (u, v) not in base_edges:
+                    # Check localized proximity to incident epicenter
+                    dist_u = get_distance_meters(event_lat, event_lng, self.G_unprojected_simple.nodes[u]['y'], self.G_unprojected_simple.nodes[u]['x'])
+                    dist_v = get_distance_meters(event_lat, event_lng, self.G_unprojected_simple.nodes[v]['y'], self.G_unprojected_simple.nodes[v]['x'])
+                    if dist_u <= max(1800.0, 2.2 * blast_radius) or dist_v <= max(1800.0, 2.2 * blast_radius):
+                        non_base_indices.append(i)
+            
+            if non_base_indices:
+                start_idx = non_base_indices[0]
+                end_idx = non_base_indices[-1]
+                detour_subpath = path[start_idx : end_idx + 2]
+            else:
+                # If no divergence exists (e.g. baseline fallback), use the full path
+                detour_subpath = path
+                
+            # Reconstruct detailed route geometry using unprojected WGS84 edge polylines along the detour-delta segment
+            raw_coords = []
+            for u, v in zip(detour_subpath[:-1], detour_subpath[1:]):
+                edge_coords = []
+                if self.G_unprojected_simple.has_edge(u, v) and 'geometry' in self.G_unprojected_simple[u][v]:
+                    geom = self.G_unprojected_simple[u][v]['geometry']
+                    edge_coords = [[coord[0], coord[1]] for coord in geom.coords]
+                else:
+                    # Fallback to straight line between unprojected nodes u and v
+                    u_data = self.G_unprojected_simple.nodes[u]
+                    v_data = self.G_unprojected_simple.nodes[v]
+                    edge_coords = [[u_data['x'], u_data['y']], [v_data['x'], v_data['y']]]
+                
+                # Deduplicate consecutive matching points during segment concatenation
+                if raw_coords and edge_coords:
+                    if raw_coords[-1] == edge_coords[0]:
+                        raw_coords.extend(edge_coords[1:])
+                    else:
+                        raw_coords.extend(edge_coords)
+                else:
+                    raw_coords.extend(edge_coords)
+            
+            if not raw_coords and len(detour_subpath) == 1:
+                node = detour_subpath[0]
+                if node in self.G_unprojected_simple:
+                    node_data = self.G_unprojected_simple.nodes[node]
+                    raw_coords = [[node_data['x'], node_data['y']]]
+            
+            path_coords = raw_coords
+            
             for node in path:
-                if node in self.G_unprojected:
-                    node_data = self.G_unprojected.nodes[node]
-                    path_coords.append([node_data['x'], node_data['y']])
-                    
+                if node in self.G_unprojected_simple:
+                    node_data = self.G_unprojected_simple.nodes[node]
                     if delay_factor > 1.4:  # Route segment flagging threshold
                         congested_nodes_output.append({
                             "latitude": node_data['y'],
                             "longitude": node_data['x'],
                             "risk_score": min(100, int(delay_factor * 50))
                         })
+
+            # Add congested corridors along alternative paths if it meets the delay threshold
+            if delay_factor > 1.4:
+                risk_val = min(100, int(delay_factor * 50))
+                for u, v in zip(path[:-1], path[1:]):
+                    edge_key = (u, v) if u < v else (v, u)
+                    if edge_key in seen_edges:
+                        continue
+                    seen_edges.add(edge_key)
+                    
+                    coords = []
+                    if self.G_unprojected_simple.has_edge(u, v) and 'geometry' in self.G_unprojected_simple[u][v]:
+                        geom = self.G_unprojected_simple[u][v]['geometry']
+                        coords = [[coord[0], coord[1]] for coord in geom.coords]
+                    else:
+                        u_data = self.G_unprojected_simple.nodes[u]
+                        v_data = self.G_unprojected_simple.nodes[v]
+                        coords = [[u_data['x'], u_data['y']], [v_data['x'], v_data['y']]]
+                    
+                    if is_corridor_valid(coords):
+                        congested_corridors_output.append({
+                            "coordinates": coords,
+                            "risk_score": float(risk_val)
+                        })
             
-            detour_geometry.append({
-                "route_index": idx,
-                "flow_allocation_percentage": int(current_split * 100),
-                "coordinates": path_coords
-            })
+            # Apply bounding box validation on detour paths
+            if is_corridor_valid(path_coords):
+                detour_geometry.append({
+                    "route_index": idx,
+                    "flow_allocation_percentage": int(current_split * 100),
+                    "coordinates": path_coords
+                })
+            else:
+                print(f"[Aegis Graph] WARNING: detour route {idx} failed bounding box validation and was rejected.")
+
+        # Calculate edge-level flow delta to derive mitigation and recovery corridors
+        before_flow = {}
+        after_flow = {}
+
+        # 1. Before flow: 1000.0 along base_path
+        if base_path and len(base_path) > 1:
+            for u, v in zip(base_path[:-1], base_path[1:]):
+                before_flow[(u, v)] = base_volume
+
+        # 2. After flow: split volume across alternative paths
+        splits_used = [flow_splits[i] if i < len(flow_splits) else 0.1 for i in range(len(paths))]
+        sum_splits = sum(splits_used)
+        normalized_splits = [s / sum_splits for s in splits_used] if sum_splits > 0 else []
+
+        for idx, path in enumerate(paths):
+            if len(path) > 1:
+                current_split = normalized_splits[idx] if idx < len(normalized_splits) else 0.0
+                for u, v in zip(path[:-1], path[1:]):
+                    after_flow[(u, v)] = after_flow.get((u, v), 0.0) + (base_volume * current_split)
+
+        # 3. Calculate delta = after_flow - before_flow
+        all_flow_edges = set(before_flow.keys()).union(set(after_flow.keys()))
+        mitigation_corridors_output = []
+        recovery_corridors_output = []
+
+        for u, v in all_flow_edges:
+            b_val = before_flow.get((u, v), 0.0)
+            a_val = after_flow.get((u, v), 0.0)
+            delta = a_val - b_val
+
+            # Get WGS84 coordinates from unprojected graph
+            coords = []
+            if self.G_unprojected_simple.has_edge(u, v) and 'geometry' in self.G_unprojected_simple[u][v]:
+                geom = self.G_unprojected_simple[u][v]['geometry']
+                coords = [[coord[0], coord[1]] for coord in geom.coords]
+            else:
+                u_data = self.G_unprojected_simple.nodes[u]
+                v_data = self.G_unprojected_simple.nodes[v]
+                coords = [[u_data['x'], u_data['y']], [v_data['x'], v_data['y']]]
+
+            # Bounding box bounds validation
+            if not is_corridor_valid(coords):
+                continue
+
+            if delta > 1.0:
+                mitigation_corridors_output.append({
+                    "coordinates": coords,
+                    "flow_allocation_percentage": (a_val / base_volume) * 100.0,
+                    "flow_delta": delta
+                })
+            elif delta < -1.0:
+                recovery_corridors_output.append({
+                    "coordinates": coords,
+                    "risk_score": (abs(delta) / base_volume) * 100.0,
+                    "flow_delta": delta
+                })
+
+        # Rank and filter corridors by impact score (risk_score) and proximity to epicenter
+        def get_corridor_dist_sq(coords):
+            if not coords or len(coords) < 1:
+                return float('inf')
+            mid_lng = (coords[0][0] + coords[-1][0]) / 2.0
+            mid_lat = (coords[0][1] + coords[-1][1]) / 2.0
+            return (mid_lat - event_lat) ** 2 + (mid_lng - event_lng) ** 2
+
+        congested_corridors_output.sort(
+            key=lambda c: (-c["risk_score"], get_corridor_dist_sq(c["coordinates"]))
+        )
+        # Limit the number of returned road corridors to reduce visual/rendering complexity
+        congested_corridors_output = congested_corridors_output[:50]
 
         # BPR calculation for unmitigated cascade case (where all traffic volume hits the blocked zone/bottleneck)
         baseline_volume = base_volume
@@ -304,6 +525,9 @@ class GraphEngine:
             "blast_radius_meters": blast_radius,
             "congested_nodes": congested_nodes_output, # Returns actual impacted node set without backend truncation
             "detour_geometry": detour_geometry,
+            "congested_corridors": congested_corridors_output,
+            "mitigation_corridors": mitigation_corridors_output,
+            "recovery_corridors": recovery_corridors_output,
             "metrics": {
                 "baseline_delay_mins": baseline_delay_mins,
                 "mitigated_delay_mins": mitigated_delay_mins,
