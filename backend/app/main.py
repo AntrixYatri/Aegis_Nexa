@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints import router as api_router
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = FastAPI(
@@ -16,6 +17,7 @@ origins = [
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
+    "https://aegisnexa.up.railway.app"
 ]
 
 app.add_middleware(
