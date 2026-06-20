@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { API_URL } from "@/config/api";
 
 export interface DispatchResponse {
   event_metadata: {
@@ -29,7 +30,7 @@ export const useDispatchFeed = (logMessage?: (msg: string, type: "info" | "warn"
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/dispatch-orders", {
+      const response = await fetch(`${API_URL}/api/v1/dispatch-orders`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

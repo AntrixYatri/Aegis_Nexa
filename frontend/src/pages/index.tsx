@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { TacticalHudCard } from '../components/TacticalHudCard';
+import { API_URL } from "@/config/api";
 
 // Dynamically import MapContainer with SSR disabled to prevent Server-Side Pre-rendering issues
 const MapContainer = dynamic(() => import('../map/MapContainer'), {
@@ -128,7 +129,7 @@ export default function CommandCenter() {
     }, 3000);
 
     // Initial check connectivity
-    fetch('http://localhost:8000/')
+    fetch(`${API_URL}/`)
       .then(() => setBackendStatus('ONLINE'))
       .catch(() => setBackendStatus('OFFLINE'));
 
@@ -140,7 +141,7 @@ export default function CommandCenter() {
 
   // Fetch historical vulnerability mapping data on mount
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/historical-risk-map')
+    fetch(`${API_URL}/api/v1/historical-risk-map`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error ${res.status}`);
         return res.json();
@@ -163,7 +164,7 @@ export default function CommandCenter() {
     pushLog(`[INFO] Triggering spatiotemporal ST-GNN simulation at lat: ${incident.latitude}, lng: ${incident.longitude}`, 'info');
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/simulate-event', {
+      const response = await fetch(`${API_URL}/api/v1/simulate-event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -187,7 +188,7 @@ export default function CommandCenter() {
 
       // Request Dispatch orders
       pushLog(`[INFO] Sending payload to Gemini Intelligence Core...`, 'info');
-      const dispatchResponse = await fetch('http://localhost:8000/api/v1/dispatch-orders', {
+      const dispatchResponse = await fetch(`${API_URL}/api/v1/dispatch-orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

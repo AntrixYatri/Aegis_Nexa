@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { API_URL } from "@/config/api";
 
 export interface Incident {
   event_type: string;
@@ -66,7 +67,7 @@ export const useSimulation = (logMessage?: (msg: string, type: "info" | "warn" |
 
     try {
       // 1. Trigger main event simulation
-      const simResponse = await fetch("http://localhost:8000/api/v1/simulate-event", {
+      const simResponse = await fetch(`${API_URL}/api/v1/simulate-event`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -95,7 +96,7 @@ export const useSimulation = (logMessage?: (msg: string, type: "info" | "warn" |
 
       // 2. Trigger containment zone fetch (with error containment in case backend datetime has import bugs)
       try {
-        const qResponse = await fetch(`http://localhost:8000/api/v1/event-quarantine-zones?lat=${latitude}&lng=${longitude}&radius_offset=0.006`);
+        const qResponse = await fetch(`${API_URL}/api/v1/event-quarantine-zones?lat=${latitude}&lng=${longitude}&radius_offset=0.006`);
         if (!qResponse.ok) {
           throw new Error("Quarantine service returned non-200");
         }
